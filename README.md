@@ -43,6 +43,9 @@ W3D Materials should be modified with this panel only.
 Use File > Import > Westwood3D to import your w3d files.
 The texture paths must be relative to the w3d file.
 
+Meshes are placed on layer 2 if they're hidden.
+VIS objects which are used by the game engine for culling polygons are placed on layer 11.
+
 The importer will first attempt to load the original filenames, e.g. 'tex.tga',
 otherwise it will try to load 'text.dds'. Blender has built in DDS support.
 
