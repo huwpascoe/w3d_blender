@@ -15,10 +15,12 @@ Object properties and pivots/positions are not available.
 No exporting functionality.
 
 ----------------------------------------------------------------------------
+
 "THE BEER-WARE LICENSE" (Revision 42a):
 <huwpascoe@github> wrote this software. As long as you retain this notice you
 can do whatever you want with this stuff. If we meet some day and you think
 this stuff is worth it, you can buy me a cider in return - Huw Pascoe
+
 ----------------------------------------------------------------------------
 
 Tiberian technologies' mod tools are recommended.
