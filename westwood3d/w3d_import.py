@@ -40,6 +40,15 @@ def gen_mats(materials):
             w3d.mpass[p].shininess = vm.Shininess
             w3d.mpass[p].opacity = vm.Opacity
             w3d.mpass[p].translucency = vm.Translucency
+            w3d.mpass[p].mapping0 = str(vm.Mapping0)
+            w3d.mpass[p].mapping1 = str(vm.Mapping1)
+            
+            sh = pdata[p]['shader']
+            w3d.mpass[p].srcblend = str(sh['SrcBlend'])
+            w3d.mpass[p].destblend = str(sh['DestBlend'])
+            w3d.mpass[p].depthmask = sh['DepthMask']
+            w3d.mpass[p].alphatest = sh['AlphaTest']
+            
             
             textures = []
             s = 0
@@ -53,22 +62,41 @@ def gen_mats(materials):
                     w3d.mpass[p].stage1 = t.name
                 s += 1
                 
-                if texdone == False:
-                    nodegeo = tree.nodes.new('GEOMETRY')
-                    nodetex = tree.nodes.new('TEXTURE')
-                    nodeout = tree.nodes.new('OUTPUT')
-                    nodetex.texture = t
-                    
-                    tree.links.new(nodegeo.outputs[4], nodetex.inputs[0])
-                    tree.links.new(nodetex.outputs[1], nodeout.inputs[0])
-                    
-                    
-                    texdone = True
-        
         # set name
         if name != '':
             mat.name = name
-    
+        
+        # Create basic node material
+        nodegeo = tree.nodes.new('GEOMETRY')
+        nodeout = tree.nodes.new('OUTPUT')
+        
+        if len(w3d.mpass) > 1:
+            nodemix = tree.nodes.new('MIX_RGB')
+            tree.links.new(nodegeo.outputs[6], nodemix.inputs[0])
+            tree.links.new(nodemix.outputs[0], nodeout.inputs[0])
+            r = 1
+            for mpass in w3d.mpass:
+                if mpass.stage0 in bpy.data.textures:
+                    nodetex = tree.nodes.new('TEXTURE')
+                    nodetex.texture = bpy.data.textures[mpass.stage0]
+                    tree.links.new(nodegeo.outputs[4], nodetex.inputs[0])
+                    tree.links.new(nodetex.outputs[1], nodemix.inputs[r])
+                else:
+                    nodeval = tree.nodes.new('VALUE')
+                    nodeval.outputs[0].default_value = 1.0
+                    tree.links.new(nodeval.outputs[0], nodemix.inputs[r])
+                r += 1
+                if r > 2:
+                    break
+        else:
+            for mpass in w3d.mpass:
+                if mpass.stage0 in bpy.data.textures:
+                    nodetex = tree.nodes.new('TEXTURE')
+                    nodetex.texture = bpy.data.textures[mpass.stage0]
+                    tree.links.new(nodegeo.outputs[4], nodetex.inputs[0])
+                    tree.links.new(nodetex.outputs[1], nodeout.inputs[0])
+                    break
+        
 def make_meshes(root):
     meshes = root.find('mesh')
     for m in meshes:
@@ -141,16 +169,16 @@ def make_meshes(root):
         ob = bpy.data.objects.new(info.MeshName, me)
         bpy.context.scene.objects.link(ob)
         bpy.context.scene.objects.active = ob
-        
-        # move vis objects way over there
-        if info.Attributes & 0x00000040:
-            ob.layers[10] = True
-            ob.layers[0] = False
             
         # move hidden objects to second layer
-        elif info.Attributes & 0x00001000:
-            ob.layers[1] = True
-            ob.layers[0] = False
+        if info.Attributes & 0x00001000:
+            # move vis objects way over there
+            if info.Attributes & 0x00000040:
+                ob.layers[10] = True
+                ob.layers[0] = False
+            else:
+                ob.layers[1] = True
+                ob.layers[0] = False
         
         # materials
         for mat in m.Materials:

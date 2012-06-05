@@ -10,8 +10,58 @@ class Westwood3DMaterialPass(bpy.types.PropertyGroup):
     opacity = bpy.props.FloatProperty(name="Opacity", default=1.0, min=0.0, max=1.0, soft_min=0.0, soft_max=1.0)
     translucency = bpy.props.FloatProperty(name="Translucency", min=0.0, max=1.0, soft_min=0.0, soft_max=1.0)
     
-    stage0 = bpy.props.StringProperty(name="0:Texture")
-    stage1 = bpy.props.StringProperty(name="1:Detail")
+    mapping0 = bpy.props.EnumProperty(name="",
+    items=[
+        ("0", "UV", ""),
+        ("1", "Environment", ""),
+        ("2", "Cheap Environment", ""),
+        ("3", "Screen", ""),
+        ("4", "Linear Offset", ""),
+        ("5", "Silhouette", ""),
+        ("6", "Scale", ""),
+        ("7", "Grid", ""),
+        ("8", "Rotate", ""),
+        ("9", "Sine Linear Offset", ""),
+        ("10", "Step Linear Offset", ""),
+        ("11", "Zigzag Linear Offset", ""),
+        ("12", "WS Classic Env", ""),
+        ("13", "WS Environment", ""),
+        ("14", "Grid Classic Env", ""),
+        ("15", "Grid Environment", ""),
+        ("16", "Random", ""),
+        ("17", "Edge", ""),
+        ("18", "Bump Environment", "")
+    ], default='0')
+    mapping1 = bpy.props.EnumProperty(name="",
+    items=[
+        ("0", "UV", ""),
+        ("1", "Environment", ""),
+        ("2", "Cheap Environment", ""),
+        ("3", "Screen", ""),
+        ("4", "Linear Offset", ""),
+        ("5", "Silhouette", ""),
+        ("6", "Scale", ""),
+        ("7", "Grid", ""),
+        ("8", "Rotate", ""),
+        ("9", "Sine Linear Offset", ""),
+        ("10", "Step Linear Offset", ""),
+        ("11", "Zigzag Linear Offset", ""),
+        ("12", "WS Classic Env", ""),
+        ("13", "WS Environment", ""),
+        ("14", "Grid Classic Env", ""),
+        ("15", "Grid Environment", ""),
+        ("16", "Random", ""),
+        ("17", "Edge", ""),
+        ("18", "Bump Environment", "")
+    ], default='0')
+    stage0 = bpy.props.StringProperty(name="")
+    stage1 = bpy.props.StringProperty(name="")
+    
+    srcblend = bpy.props.StringProperty(name="Src Blend")
+    destblend = bpy.props.StringProperty(name="Dest Blend")
+    depthmask = bpy.props.BoolProperty(name="Write ZBuffer", default=True)
+    alphatest = bpy.props.BoolProperty(name="Alpha Test", default=False)
+    
     
     # blend = bpy.props.EnumProperty(name="Blend", description="Blend presets",
     # items=[
@@ -129,7 +179,7 @@ class MATERIAL_PT_westwood3d(bpy.types.Panel):
             box.prop(w3d, "mpass_index")
             
             box.prop(mpass, "name")
-            box.prop(mpass, "blend")
+            #box.prop(mpass, "blend")
             split = box.split()
             col = split.column()
             col.prop(mpass, "diffuse")
@@ -143,6 +193,18 @@ class MATERIAL_PT_westwood3d(bpy.types.Panel):
             box.prop(mpass, "shininess")
             
             stbox = box.box()
+            stbox.prop(mpass, "srcblend")
+            stbox.prop(mpass, "destblend")
+            stbox.prop(mpass, "depthmask")
+            stbox.prop(mpass, "alphatest")
+            
+            stbox = box.box()
+            split = stbox.split()
+            split.label("Stage 0")
+            split.prop(mpass, "mapping0")
             stbox.prop_search(mpass, "stage0", bpy.data, "textures")
             stbox = box.box()
+            split = stbox.split()
+            split.label("Stage 1")
+            split.prop(mpass, "mapping1")
             stbox.prop_search(mpass, "stage1", bpy.data, "textures")

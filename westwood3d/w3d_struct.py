@@ -277,7 +277,6 @@ class node_vertex_material_name(node):
 class node_vertex_material_info(node):
     def read(self, file, size):
         data = read_struct(file, 'L4B4B4B4Bfff')
-        self.Attributes = data[0]
         self.Ambient = (data[1], data[2], data[3])
         self.Diffuse = (data[5], data[6], data[7])
         self.Specular = (data[9], data[10], data[11])
@@ -285,6 +284,8 @@ class node_vertex_material_info(node):
         self.Shininess = data[17]
         self.Opacity = data[18]
         self.Translucency = data[19]
+        self.Mapping0 = data[0] >> 16 & 0xFF
+        self.Mapping1 = data[0] >> 8 & 0xFF
     def write(self, file):
         pass
 class node_dcg(node):
@@ -331,6 +332,30 @@ class node_shader_ids(node):
             data = read_struct(file, 'L')
             self.ids.append(data[0])
             size -= struct.calcsize('L')
+    def write(self, file):
+        pass
+class node_shaders(node):
+    def read(self, file, size):
+        self.shaders = []
+        while size > 0:
+            data = read_struct(file, '16B')
+            self.shaders.append({
+                'SrcBlend': data[7],
+                'DestBlend': data[3],
+                'DepthMask': data[1],
+                'AlphaTest': data[12],
+                
+                'PriGradient': data[5],
+                'SecGradient': data[6],
+                'DepthCompare': data[0],
+                'DetailColorFunc': data[9],
+                'DetailAlphaFunc': data[10],            
+                
+                'Texturing': data[8],
+                'PostDetailColorFunc': data[13],
+                'PostDetailAlphaFunc': data[14]
+            })
+            size -= struct.calcsize('16B')
     def write(self, file):
         pass
 class node_texture_stage(node):

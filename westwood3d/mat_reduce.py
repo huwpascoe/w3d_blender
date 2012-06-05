@@ -11,7 +11,7 @@ def mat_reduce(root, ignore_lightmap):
         texnames = mesh.findRec('texture_name')
         vmnames = mesh.findRec('vertex_material_name')
         vminfos = mesh.findRec('vertex_material_info')
-        
+        shaders = mesh.getRec('shaders')
         fmhash = {}
         mesh.Materials = []
         faceidx = 0
@@ -68,6 +68,7 @@ def mat_reduce(root, ignore_lightmap):
             
             for pinfo in finfo['mpass']:
                 p = { 'vertex_material': {}, 'stages': [] }
+                p['shader'] = shaders.shaders[pinfo['sid']]
                 p['vertex_material']['name'] = vmnames[pinfo['vmid']].name
                 p['vertex_material']['info'] = vminfos[pinfo['vmid']]
                 for id in pinfo['stages']:
