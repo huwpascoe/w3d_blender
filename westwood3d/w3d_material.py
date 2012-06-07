@@ -95,7 +95,7 @@ class Westwood3DMaterial(bpy.types.PropertyGroup):
     mpass = bpy.props.CollectionProperty(type=Westwood3DMaterialPass)
     mpass_index = bpy.props.IntProperty(name="Pass", min=1, max=4, update=change_mpass_index)
     mpass_count = bpy.props.IntProperty(name="Pass Count", min=0, max=4, update=change_mpass_count)
-    #static_sort = bpy.props.IntProperty(name="Static Sort", min=0, description="Which render index the polygons go in, zero for automatic placement.")
+    sort_level = bpy.props.IntProperty(name="Sort Level", min=0)
     surface_type = bpy.props.EnumProperty(name="Surface", description="Surface types cause a range of effects, e.g. tiberium hurts you and is crunchy.",
     items=[
         ("0", "Light Metal", ""),
@@ -169,6 +169,7 @@ class MATERIAL_PT_westwood3d(bpy.types.Panel):
         col = layout.column()
         
         col.prop(w3d, "surface_type")
+        col.prop(w3d, "sort_level")
         col.separator()
         col.prop(w3d, "mpass_count")
         col.separator()

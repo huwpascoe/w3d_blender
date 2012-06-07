@@ -245,6 +245,15 @@ class node_vertex_normals(node):
             size -= struct.calcsize('3f')
     def write(self, file):
         pass
+class node_vertex_influences(node):
+    def read(self, file, size):
+        self.influences = []
+        while size > 0:
+            data = read_struct(file, 'H6B')
+            self.influences.append(data[0])
+            size -= struct.calcsize('H6B')
+    def write(self, file):
+        pass
 class node_triangles(node):
     def read(self, file, size):
         self.triangles = []
@@ -424,7 +433,7 @@ class node_pivots(node):
                 'Name': data[0].split(b'\0')[0].decode('utf-8'),
                 'ParentIdx': data[1],
                 'Translation': (data[2],data[3],data[4]),
-                'Eulerangles': (data[5],data[6],data[7]),
+                'EulerAngles': (data[5],data[6],data[7]),
                 'Rotation': (data[8],data[9],data[10],data[11])
             })
             size -= struct.calcsize('16sL3f3f4f')
@@ -433,6 +442,15 @@ class node_pivots(node):
 class node_hlod(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
+    def write(self, file):
+        pass
+class node_hlod_header(node):
+    def read(self, file, size):
+        data = read_struct(file, 'LL16s16s')
+        self.Version = data[0]
+        self.LodCount = data[1]
+        self.Name = data[2].split(b'\0')[0].decode('utf-8')
+        self.HierarchyName = data[3].split(b'\0')[0].decode('utf-8')
     def write(self, file):
         pass
 class node_hlod_lod_array(node):

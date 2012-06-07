@@ -5,6 +5,7 @@ def mat_reduce(root, ignore_lightmap):
     mathash = {}
     
     for mesh in root.find('mesh'):
+        meshinfo = mesh.get('mesh_header3')
         verts = mesh.get('vertices').vertices
         faces = mesh.get('triangles').triangles
         mpass = mesh.findRec('material_pass')
@@ -65,6 +66,7 @@ def mat_reduce(root, ignore_lightmap):
             # Compile material
             mat = { 'mpass': [] }
             mat['surface'] = finfo['surface']
+            mat['sort_level'] = meshinfo.SortLevel
             
             for pinfo in finfo['mpass']:
                 p = { 'vertex_material': {}, 'stages': [] }
