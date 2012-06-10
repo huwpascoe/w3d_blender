@@ -1,7 +1,7 @@
 import bpy
 import bmesh
 import os
-from . import w3d_struct, mat_reduce
+from . import w3d_struct, aggregate, mat_reduce
 
 def gen_mats(materials):
     for mdata in materials:
@@ -98,35 +98,14 @@ def gen_mats(materials):
                     tree.links.new(nodetex.outputs[1], nodeout.inputs[0])
                     break
 
-def gen_pivots(root, name, paths):
+def gen_pivots(root, name):
     
-    exload = True
-    hierarchy = root.get('hierarchy')
-    if hierarchy is not None:
-        info = hierarchy.get('hierarchy_header')
-        if info.Name == name:
-            exload = False
-    
-    if exload:
-        hierarchy = None
-        for path in paths:
-            try:
-                file = open(os.path.join(path, name + '.w3d'), 'rb')
-                root = w3d_struct.node()
-                root.children = w3d_struct.parse_nodes(file)
-                hierarchy = root.get('hierarchy')
-                if hierarchy is not None:
-                    info = hierarchy.get('hierarchy_header')
-                    if info.Name != name:
-                        hierarchy = None
-                    else:
-                        break
-                file.close()
-            except:
-                pass
-    
-    if hierarchy == None:
-        raise Exception("Couldn't load hierarchy: " + name)
+    # find the hierarchy
+    hierarchy = None
+    for h in root.find('hierarchy'):
+        if name == h.get('hierarchy_header').Name:
+            hierarchy = h
+            break
     
     pivots = []
     for p in hierarchy.get('pivots').pivots:
@@ -158,11 +137,11 @@ def deform_mesh(mesh, mdata, pivots):
         v.co = pivots[inf[v.index]].matrix_world * v.co
     bm.to_mesh(mesh)
     
-def make_hierarchy(root, meshes, paths):
+def make_hierarchy(root, meshes):
     hroot = root.get('hlod')
     info = hroot.get('hlod_header')
     for hlod in hroot.find('hlod_lod_array'):
-        pivots = gen_pivots(root, info.HierarchyName, paths)
+        pivots = gen_pivots(root, info.HierarchyName)
         for h in hlod.find('hlod_sub_object'):
             if h.Name in meshes:
                 meshes[h.Name][0].parent = pivots[h.BoneIndex]
@@ -298,7 +277,14 @@ def load_images(root, paths):
         
         if img == None:
             print('image not loaded: ' + fn.name)
-            
+
+def make_scene(node, paths, ignore_lightmap):
+    load_images(node, paths)
+    materials = mat_reduce.mat_reduce(node, ignore_lightmap)
+    gen_mats(materials)
+    meshes = make_meshes(node)
+    hierarchy = make_hierarchy(node, meshes)
+    
 # blender stuff
 def read_some_data(context, filepath, ignore_lightmap):
     print("running read_some_data...")
@@ -310,19 +296,15 @@ def read_some_data(context, filepath, ignore_lightmap):
         os.path.join(current_path, '../textures/'),
     ]
     
-    file = open(filepath, 'rb')
-    root = w3d_struct.node()
-    try:
-        root.children = w3d_struct.parse_nodes(file)
-    finally:
-        file.close()
+    root = w3d_struct.load(filepath)
+    ags = aggregate.aggregate(root, paths)
     
-    # create scene
-    load_images(root, paths)
-    materials = mat_reduce.mat_reduce(root, ignore_lightmap)
-    gen_mats(materials)
-    meshes = make_meshes(root)
-    hierarchy = make_hierarchy(root, meshes, paths)
+    if len(ags) > 0:
+        for a in ags:
+            make_scene(a, paths, ignore_lightmap)
+        # join hierarchies here...
+    else:
+        make_scene(root, paths, ignore_lightmap)
     
     #bpy.context.scene.game_settings.material_mode = 'GLSL'
     for scrn in bpy.data.screens:

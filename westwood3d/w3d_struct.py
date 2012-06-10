@@ -1,5 +1,8 @@
 import struct
 
+def b2s(str):
+    return str.split(b'\0')[0].decode('utf-8')
+
 w3d_keys = {
     0x00000000: 'MESH',
     0x00000002: 'VERTICES',
@@ -210,8 +213,8 @@ class node_mesh_header3(node):
         data = read_struct(file, 'LL16s16sLLLLlLLLL3f3f3ff')
         self.Version = data[0]
         self.Attributes = data[1]
-        self.MeshName = data[2].split(b'\0')[0].decode('utf-8')
-        self.ContainerName = data[3].split(b'\0')[0].decode('utf-8')
+        self.MeshName = b2s(data[2])
+        self.ContainerName = b2s(data[3])
         self.NumTris = data[4]
         self.NumVertices = data[5]
         self.NumMaterials = data[6]
@@ -280,7 +283,7 @@ class node_vertex_material(node):
         pass
 class node_vertex_material_name(node):
     def read(self, file, size):
-        self.name = file.read(size).split(b'\0')[0].decode('utf-8')
+        self.name = b2s(file.read(size))
     def write(self, file):
         pass
 class node_vertex_material_info(node):
@@ -412,14 +415,14 @@ class node_hierarchy(node):
         pass
 class node_texture_name(node):
     def read(self, file, size):
-        self.name = file.read(size).split(b'\0')[0].decode('utf-8')
+        self.name = b2s(file.read(size))
     def write(self, file):
         pass
 class node_hierarchy_header(node):
     def read(self, file, size):
         data = read_struct(file, 'L16sL3f')
         self.Version = data[0]
-        self.Name = data[1].split(b'\0')[0].decode('utf-8')
+        self.Name = b2s(data[1])
         self.NumPivots = data[2]
         self.Center = (data[3], data[4], data[5])
     def write(self, file):
@@ -430,13 +433,49 @@ class node_pivots(node):
         while size > 0:
             data = read_struct(file, '16sL3f3f4f')
             self.pivots.append({
-                'Name': data[0].split(b'\0')[0].decode('utf-8'),
+                'Name': b2s(data[0]),
                 'ParentIdx': data[1],
                 'Translation': (data[2],data[3],data[4]),
                 'EulerAngles': (data[5],data[6],data[7]),
                 'Rotation': (data[8],data[9],data[10],data[11])
             })
             size -= struct.calcsize('16sL3f3f4f')
+    def write(self, file):
+        pass
+class node_aggregate(node):
+    def read(self, file, size):
+        self.children = parse_nodes(file, size)
+    def write(self, file):
+        pass
+class node_aggregate_header(node):
+    def read(self, file, size):
+        data = read_struct(file, 'L16s')
+        self.Version = data[0]
+        self.Name = b2s(data[1])
+    def write(self, file):
+        pass
+class node_aggregate_info(node):
+    def read(self, file, size):
+        data = read_struct(file, '32sL')
+        self.BaseModelName = b2s(data[0])
+        self.SubobjectCount = data[1]
+        size -= struct.calcsize('32sL')
+        
+        self.Subobjects = []
+        while size > 0:
+            data = read_struct(file, '32s32s')
+            self.Subobjects.append({
+                'SubobjectName': b2s(data[0]),
+                'BoneName': b2s(data[1])
+            })
+            size -= struct.calcsize('32s32s')
+    def write(self, file):
+        pass
+class node_aggregate_class_info(node):
+    def read(self, file, size):
+        data = read_struct(file, 'LL3L')
+        self.OriginalClassID = data[0]
+        self.Flags = data[1]
     def write(self, file):
         pass
 class node_hlod(node):
@@ -449,11 +488,16 @@ class node_hlod_header(node):
         data = read_struct(file, 'LL16s16s')
         self.Version = data[0]
         self.LodCount = data[1]
-        self.Name = data[2].split(b'\0')[0].decode('utf-8')
-        self.HierarchyName = data[3].split(b'\0')[0].decode('utf-8')
+        self.Name = b2s(data[2])
+        self.HierarchyName = b2s(data[3])
     def write(self, file):
         pass
 class node_hlod_lod_array(node):
+    def read(self, file, size):
+        self.children = parse_nodes(file, size)
+    def write(self, file):
+        pass
+class node_hlod_aggregate_array(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
     def write(self, file):
@@ -467,7 +511,7 @@ class node_hlod_sub_object(node):
     def read(self, file, size):
         data = read_struct(file, 'L32s')
         self.BoneIndex = data[0]
-        self.Name = data[1].split(b'\0')[0].decode('utf-8')
+        self.Name = b2s(data[1])
     def write(self, file):
         pass
 class node_(node):
@@ -524,3 +568,13 @@ def parse_nodes(file, size=0x7FFFFFFF):
         size -= 8 + ci[1] # header size + chunk size
         
     return nodes
+    
+def load(filepath):
+    file = open(filepath, 'rb')
+    print('load: ' + filepath)
+    try:
+        root = node()
+        root.children = parse_nodes(file)
+    finally:
+        file.close()
+    return root
