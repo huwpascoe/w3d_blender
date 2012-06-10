@@ -1,5 +1,6 @@
 import bpy
 import bmesh
+import mathutils
 import os
 from . import w3d_struct, aggregate, mat_reduce
 
@@ -97,7 +98,52 @@ def gen_mats(materials):
                     tree.links.new(nodegeo.outputs[4], nodetex.inputs[0])
                     tree.links.new(nodetex.outputs[1], nodeout.inputs[0])
                     break
+def make_hierarchy(root, meshes):
+    hroot = root.get('hlod')
+    info = hroot.get('hlod_header')
+    pivots = gen_pivots(root, info.HierarchyName)
+    gen_bones(pivots[0], info.HierarchyName)
+    lod = info.LodCount
+    for hlod in hroot.find('hlod_lod_array'):
+        lod -= 1
+        for h in hlod.find('hlod_sub_object'):
+            if h.Name in meshes:
+                m = meshes[h.Name][0]
+                m.parent = pivots[h.BoneIndex]
+                
+                for i in range(len(m.layers)):
+                    if m.layers[i]:
+                        m.layers[i + lod] = True
+                        m.layers[i] = False
+                        break
+                deform_mesh(m.data, meshes[h.Name][1], pivots)
 
+def gen_bones(ob_tree, name):
+    arm = bpy.data.armatures.new(name)
+    ob = bpy.data.objects.new(name, arm)
+    bpy.context.scene.objects.link(ob)
+    bpy.context.scene.objects.active = ob
+    bpy.ops.object.mode_set(mode='EDIT')
+    gen_b(ob_tree, arm)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+def gen_b(ob, arm, parent=None):
+    
+    bone = arm.edit_bones.new(ob.name)
+    bone.head = ob.matrix_world.to_translation()
+    
+    if parent:
+        parent.tail = bone.head
+        
+        # bone information isn't stored so make assumption for leaf nodes
+        bone.tail = bone.head + (parent.tail - parent.head) * 0.5
+        
+        bone.parent = parent
+        bone.use_connect = True
+        
+    for c in ob.children:
+        gen_b(c, arm, bone)
+    
 def gen_pivots(root, name):
     
     # find the hierarchy
@@ -122,6 +168,7 @@ def gen_pivots(root, name):
         bpy.context.scene.objects.link(ob)
         pivots.append(ob)
     
+    bpy.context.scene.update()
     return pivots
 
 def deform_mesh(mesh, mdata, pivots):
@@ -132,29 +179,9 @@ def deform_mesh(mesh, mdata, pivots):
     
     bm = bmesh.new()
     bm.from_mesh(mesh)
-    bpy.context.scene.update()
     for v in bm.verts:
         v.co = pivots[inf[v.index]].matrix_world * v.co
     bm.to_mesh(mesh)
-    
-def make_hierarchy(root, meshes):
-    hroot = root.get('hlod')
-    info = hroot.get('hlod_header')
-    pivots = gen_pivots(root, info.HierarchyName)
-    lod = info.LodCount
-    for hlod in hroot.find('hlod_lod_array'):
-        lod -= 1
-        for h in hlod.find('hlod_sub_object'):
-            if h.Name in meshes:
-                m = meshes[h.Name][0]
-                m.parent = pivots[h.BoneIndex]
-                
-                for i in range(len(m.layers)):
-                    if m.layers[i]:
-                        m.layers[i + lod] = True
-                        m.layers[i] = False
-                        break
-                deform_mesh(m.data, meshes[h.Name][1], pivots)
     
 def make_meshes(root):
     meshes = root.find('mesh')
