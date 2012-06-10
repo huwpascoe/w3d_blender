@@ -140,12 +140,21 @@ def deform_mesh(mesh, mdata, pivots):
 def make_hierarchy(root, meshes):
     hroot = root.get('hlod')
     info = hroot.get('hlod_header')
+    pivots = gen_pivots(root, info.HierarchyName)
+    lod = info.LodCount
     for hlod in hroot.find('hlod_lod_array'):
-        pivots = gen_pivots(root, info.HierarchyName)
+        lod -= 1
         for h in hlod.find('hlod_sub_object'):
             if h.Name in meshes:
-                meshes[h.Name][0].parent = pivots[h.BoneIndex]
-                deform_mesh(meshes[h.Name][0].data, meshes[h.Name][1], pivots)
+                m = meshes[h.Name][0]
+                m.parent = pivots[h.BoneIndex]
+                
+                for i in range(len(m.layers)):
+                    if m.layers[i]:
+                        m.layers[i + lod] = True
+                        m.layers[i] = False
+                        break
+                deform_mesh(m.data, meshes[h.Name][1], pivots)
     
 def make_meshes(root):
     meshes = root.find('mesh')
@@ -225,10 +234,10 @@ def make_meshes(root):
         if info.Attributes & 0x00001000:
             # move vis objects way over there
             if info.Attributes & 0x00000040:
-                ob.layers[10] = True
+                ob.layers[5] = True
                 ob.layers[0] = False
             else:
-                ob.layers[1] = True
+                ob.layers[10] = True
                 ob.layers[0] = False
         
         # materials
