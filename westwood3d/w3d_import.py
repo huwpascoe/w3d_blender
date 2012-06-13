@@ -101,8 +101,11 @@ def gen_mats(materials):
 def make_hierarchy(root, meshes):
     hroot = root.get('hlod')
     info = hroot.get('hlod_header')
+    
     pivots = gen_pivots(root, info.HierarchyName)
     gen_bones(pivots[0], info.HierarchyName)
+    
+    
     lod = info.LodCount
     for hlod in hroot.find('hlod_lod_array'):
         lod -= 1
@@ -130,17 +133,27 @@ def gen_bones(ob_tree, name):
 def gen_b(ob, arm, parent=None):
     
     bone = arm.edit_bones.new(ob.name)
-    bone.head = ob.matrix_world.to_translation()
     
+    if ob.location.length > 0:
+        # Leaf nodes don't have tails so invent one
+        bone.tail = (ob.location.length * 0.5,0,0)
+    else:
+        # X-Up axis for bones apparently
+        bone.tail = (0.1,0,0)
+    
+    # Seems to work
+    bone.transform(ob.matrix_world)
+    if bone.vector.y >= 0:
+        bone.roll = -bone.roll
+    
+    # can have connected or loose bones
     if parent:
-        parent.tail = bone.head
-        
-        # bone information isn't stored so make assumption for leaf nodes
-        bone.tail = bone.head + (parent.tail - parent.head) * 0.5
-        
+        if len(ob.parent.children) == 1 and (parent.head - bone.head).length > 0.001:
+            parent.tail = bone.head
+        else:
+            bone.use_connect = False
         bone.parent = parent
-        bone.use_connect = True
-        
+    
     for c in ob.children:
         gen_b(c, arm, bone)
     
@@ -156,6 +169,8 @@ def gen_pivots(root, name):
     pivots = []
     for p in hierarchy.get('pivots').pivots:
         ob = bpy.data.objects.new(p['Name'], None)
+        ob.empty_draw_size = 0.1
+        
         if p['ParentIdx'] != 0xffffffff:
             ob.parent = pivots[p['ParentIdx']]
         
