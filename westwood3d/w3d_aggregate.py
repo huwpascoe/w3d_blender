@@ -3,6 +3,7 @@ from . import w3d_struct
 
 def aggregate(root, paths):
     ag_rec(root, root, paths)
+    root.log(2)
 
 def ag_rec(node, root, paths, loaded={}):
     expfiles = {}
@@ -11,20 +12,20 @@ def ag_rec(node, root, paths, loaded={}):
     # load aggregates
     ag = node.get('aggregate')
     if ag is not None:
-        ainfo = ag.get('aggregate_info')
-        loaded[ainfo.Name] = True
+        loaded[ag.get('aggregate_header').Name] = True
         
+        ainfo = ag.get('aggregate_info')
         expfiles[ainfo.BaseModelName] = True
         for s in ainfo.Subobjects:
             expfiles[s['SubobjectName']] = True
     
     # mark hierarchy as loaded
-    hierarchy = root.get('hierarchy')
+    hierarchy = node.get('hierarchy')
     if hierarchy is not None:
         loaded[hierarchy.get('hierarchy_header').Name] = True
     
     # hlod
-    hlod = root.get('hlod')
+    hlod = node.get('hlod')
     if hlod is not None:
         
         # hierarchy

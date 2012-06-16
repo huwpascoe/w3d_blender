@@ -312,8 +312,8 @@ def read_some_data(context, filepath, ignore_lightmap):
     
     # Load data
     root = w3d_struct.load(filepath)
-    nodes = w3d_aggregate.aggregate(root, paths)
-    nodes[''] = root
+    w3d_aggregate.aggregate(root, paths)
+    return {'FINISHED'}
     
     # Get hierarchies
     hierarchy = w3d_util.make_hierarchy(n)
@@ -323,7 +323,7 @@ def read_some_data(context, filepath, ignore_lightmap):
             hierarchies.append(h)
     
     w3d_util.combine_hierarchies(hierarchies)
-        load_scene(a, paths, ignore_lightmap)
+    load_scene(a, paths, ignore_lightmap)
     
     #bpy.context.scene.game_settings.material_mode = 'GLSL'
     for scrn in bpy.data.screens:
