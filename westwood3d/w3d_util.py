@@ -1,58 +1,57 @@
 import copy
 
-def make_hieararchy(nodes):
-    pass
-
 def make_pivots(root):
-    # Find the hierarchy data
-    hroot = root.get('hlod')
-    if hroot is None:
-        return None
+    pivotdict = {}
     
-    info = hroot.get('hlod_header')
-    
-    hierarchy = None
-    for h in root.find('hierarchy'):
-        if info.HierarchyName == h.get('hierarchy_header').Name:
-            hierarchy = h
-            break
-    
-    if hierarchy is None:
-        return None
-    
-    # Compile pivot data into a proper tree
-    rootpivot = None
-    pivots = []
-    for pdata in hierarchy.get('pivots').pivots:
-        p = { 'name': pdata['Name'], 'children': [], 'obj': [], 'prx': [] }
+    for hroot in root.find('hlod'):
+        if hroot is None:
+            continue
         
-        if pdata['ParentIdx'] != 0xffffffff:
-            pivots[pdata['ParentIdx']]['children'].append(p)
-        else:
-            rootpivot = p
+        info = hroot.get('hlod_header')
         
-        p['translation'] = pdata['Translation']
-        p['rotation'] = pdata['Rotation']
-        pivots.append(p)
+        hierarchy = None
+        hname = None
+        for h in root.find('hierarchy'):
+            hname = h.get('hierarchy_header').Name
+            if info.HierarchyName == hname:
+                hierarchy = h
+                break
+        
+        if hierarchy is None:
+            continue
+        
+        # Compile pivot data into a proper tree
+        pivots = []
+        for pdata in hierarchy.get('pivots').pivots:
+            p = { 'name': pdata['Name'], 'children': [], 'obj': [], 'prx': [] }
+            
+            if pdata['ParentIdx'] != 0xffffffff:
+                pivots[pdata['ParentIdx']]['children'].append(p)
+            else:
+                pivotdict[hname] = p
+            
+            p['translation'] = pdata['Translation']
+            p['rotation'] = pdata['Rotation']
+            pivots.append(p)
+        
+        # Assign name-lod tuple to pivots
+        lod = info.LodCount
+        for hlod in hroot.find('hlod_lod_array'):
+            lod -= 1
+            for h in hlod.find('hlod_sub_object'):
+                pivots[h.BoneIndex]['obj'].append((h.Name, lod))
+        
+        # aggregates appear in all LOD
+        for hlod in hroot.find('hlod_aggregate_array'):
+            for h in hlod.find('hlod_sub_object'):
+                pivots[h.BoneIndex]['obj'].append((h.Name, -1))
+        
+        # proxy objects are special
+        for hlod in hroot.find('hlod_proxy_array'):
+            for h in hlod.find('hlod_sub_object'):
+                pivots[h.BoneIndex]['obj'].append((h.Name, -2))
     
-    # Assign name-lod tuple to pivots
-    lod = info.LodCount
-    for hlod in hroot.find('hlod_lod_array'):
-        lod -= 1
-        for h in hlod.find('hlod_sub_object'):
-            pivots[h.BoneIndex]['obj'].append((h.Name, lod))
-    
-    # aggregates appear in all LOD
-    for hlod in hroot.find('hlod_aggregate_array'):
-        for h in hlod.find('hlod_sub_object'):
-            pivots[h.BoneIndex]['obj'].append((h.Name, -1))
-    
-    # proxy objects are special
-    for hlod in hroot.find('hlod_proxy_array'):
-        for h in hlod.find('hlod_sub_object'):
-            pivots[h.BoneIndex]['obj'].append((h.Name, -2))
-    
-    return rootpivot
+    return pivotdict
     
 def mat_reduce(root, ignore_lightmap):
     materials = []

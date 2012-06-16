@@ -279,11 +279,17 @@ def load_scene(node, paths, ignore_lightmap):
     
     materials = w3d_util.mat_reduce(node, ignore_lightmap)
     hierarchy = w3d_util.make_hierarchy(node)
+    pivots = w3d_util.make_pivots(node)
     
     gen_mats(materials)
     make_meshes(node)
     
-    return hierarchy
+    for p in pivots:
+        for name, lod in p['obj']:
+            ob = bpy.data.objects[name]
+            if ob is not none:
+                pass
+    return
     lod = info.LodCount
     for hlod in hroot.find('hlod_lod_array'):
         lod -= 1
@@ -313,17 +319,8 @@ def read_some_data(context, filepath, ignore_lightmap):
     # Load data
     root = w3d_struct.load(filepath)
     w3d_aggregate.aggregate(root, paths)
-    return {'FINISHED'}
     
-    # Get hierarchies
-    hierarchy = w3d_util.make_hierarchy(n)
-    for n in nodes:
-        h = w3d_util.make_hierarchy(n)
-        if h is not None:
-            hierarchies.append(h)
-    
-    w3d_util.combine_hierarchies(hierarchies)
-    load_scene(a, paths, ignore_lightmap)
+    load_scene(root, paths, ignore_lightmap)
     
     #bpy.context.scene.game_settings.material_mode = 'GLSL'
     for scrn in bpy.data.screens:
