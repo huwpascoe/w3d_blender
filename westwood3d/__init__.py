@@ -16,10 +16,10 @@ if "bpy" in locals():
     imp.reload(w3d_material)
     imp.reload(w3d_struct)
     imp.reload(aggregate)
-    imp.reload(mat_reduce)
+    imp.reload(w3d_util)
     imp.reload(w3d_import)
 else:
-    from . import w3d_material, w3d_struct, aggregate, mat_reduce, w3d_import
+    from . import w3d_material, w3d_struct, aggregate, w3d_util, w3d_import
 
 import bpy
 

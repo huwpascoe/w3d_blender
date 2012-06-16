@@ -2,7 +2,7 @@ import bpy
 import bmesh
 import mathutils
 import os
-from . import w3d_struct, aggregate, mat_reduce
+from . import w3d_struct, w3d_aggregate, w3d_util
 
 def gen_mats(materials):
     for mdata in materials:
@@ -98,28 +98,6 @@ def gen_mats(materials):
                     tree.links.new(nodegeo.outputs[4], nodetex.inputs[0])
                     tree.links.new(nodetex.outputs[1], nodeout.inputs[0])
                     break
-def make_hierarchy(root, meshes):
-    hroot = root.get('hlod')
-    info = hroot.get('hlod_header')
-    
-    pivots = gen_pivots(root, info.HierarchyName)
-    gen_bones(pivots[0], info.HierarchyName)
-    
-    
-    lod = info.LodCount
-    for hlod in hroot.find('hlod_lod_array'):
-        lod -= 1
-        for h in hlod.find('hlod_sub_object'):
-            if h.Name in meshes:
-                m = meshes[h.Name][0]
-                m.parent = pivots[h.BoneIndex]
-                
-                for i in range(len(m.layers)):
-                    if m.layers[i]:
-                        m.layers[i + lod] = True
-                        m.layers[i] = False
-                        break
-                deform_mesh(m.data, meshes[h.Name][1], pivots)
 
 def gen_bones(ob_tree, name):
     arm = bpy.data.armatures.new(name)
@@ -157,35 +135,6 @@ def gen_b(ob, arm, parent=None):
     for c in ob.children:
         gen_b(c, arm, bone)
     
-def gen_pivots(root, name):
-    
-    # find the hierarchy
-    hierarchy = None
-    for h in root.find('hierarchy'):
-        if name == h.get('hierarchy_header').Name:
-            hierarchy = h
-            break
-    
-    pivots = []
-    for p in hierarchy.get('pivots').pivots:
-        ob = bpy.data.objects.new(p['Name'], None)
-        ob.empty_draw_size = 0.1
-        
-        if p['ParentIdx'] != 0xffffffff:
-            ob.parent = pivots[p['ParentIdx']]
-        
-        ob.location = p['Translation']
-        ob.rotation_mode = 'QUATERNION'
-        r = p['Rotation']
-        ob.rotation_quaternion = (r[3], r[0], r[1], r[2])
-        ob.rotation_mode = 'XYZ'
-        
-        bpy.context.scene.objects.link(ob)
-        pivots.append(ob)
-    
-    bpy.context.scene.update()
-    return pivots
-
 def deform_mesh(mesh, mdata, pivots):
     inf = mdata.get('vertex_influences')
     if inf is None:
@@ -200,9 +149,10 @@ def deform_mesh(mesh, mdata, pivots):
     
 def make_meshes(root):
     meshes = root.find('mesh')
-    meshlist = {}
     for m in meshes:
         info = m.get('mesh_header3')
+        fullname = info.ContainerName + '.' + info.MeshName
+        
         verts = m.get('vertices').vertices
         faces = m.get('triangles').triangles
         
@@ -214,7 +164,7 @@ def make_meshes(root):
             tids = tids.ids
         
         # create mesh
-        me = bpy.data.meshes.new(info.MeshName)
+        me = bpy.data.meshes.new(fullname)
         
         # current bmesh's uv.new() doesn't work properly
         # have to create UVlayers with the old API
@@ -231,7 +181,7 @@ def make_meshes(root):
             try:
                 bm.faces.new([bm.verts[i] for i in f['Vindex']]).material_index = f['Mindex']
             except:
-                print("duplicate faces encountered on:" + info.MeshName)
+                print("duplicate faces encountered on:" + fullname)
         
         # vertex color information
         for p in range(len(mpass)):
@@ -268,7 +218,7 @@ def make_meshes(root):
         bm.to_mesh(me)
         
         # attach to object, place in scene
-        ob = bpy.data.objects.new(info.MeshName, me)
+        ob = bpy.data.objects.new(fullname, me)
         bpy.context.scene.objects.link(ob)
         bpy.context.scene.objects.active = ob
             
@@ -299,11 +249,6 @@ def make_meshes(root):
                     if i < len(tids) - 1:
                         i += 1
         
-        # add to list for hierarchy
-        meshlist[info.ContainerName + '.' + info.MeshName] = (ob, m)
-    
-    return meshlist
-        
 def load_images(root, paths):
     # get every image
     filenames = root.findRec('texture_name')
@@ -329,12 +274,30 @@ def load_images(root, paths):
         if img == None:
             print('image not loaded: ' + fn.name)
 
-def make_scene(node, paths, ignore_lightmap):
+def load_scene(node, paths, ignore_lightmap):
     load_images(node, paths)
-    materials = mat_reduce.mat_reduce(node, ignore_lightmap)
+    
+    materials = w3d_util.mat_reduce(node, ignore_lightmap)
+    hierarchy = w3d_util.make_hierarchy(node)
+    
     gen_mats(materials)
-    meshes = make_meshes(node)
-    hierarchy = make_hierarchy(node, meshes)
+    make_meshes(node)
+    
+    return hierarchy
+    lod = info.LodCount
+    for hlod in hroot.find('hlod_lod_array'):
+        lod -= 1
+        for h in hlod.find('hlod_sub_object'):
+            if h.Name in meshes:
+                m = meshes[h.Name][0]
+                m.parent = pivots[h.BoneIndex]
+                
+                for i in range(len(m.layers)):
+                    if m.layers[i]:
+                        m.layers[i + lod] = True
+                        m.layers[i] = False
+                        break
+                deform_mesh(m.data, meshes[h.Name][1], pivots)
     
 # blender stuff
 def read_some_data(context, filepath, ignore_lightmap):
@@ -347,15 +310,20 @@ def read_some_data(context, filepath, ignore_lightmap):
         os.path.join(current_path, '../textures/'),
     ]
     
+    # Load data
     root = w3d_struct.load(filepath)
-    ags = aggregate.aggregate(root, paths)
+    nodes = w3d_aggregate.aggregate(root, paths)
+    nodes[''] = root
     
-    if len(ags) > 0:
-        for a in ags:
-            make_scene(a, paths, ignore_lightmap)
-        # join hierarchies here...
-    else:
-        make_scene(root, paths, ignore_lightmap)
+    # Get hierarchies
+    hierarchy = w3d_util.make_hierarchy(n)
+    for n in nodes:
+        h = w3d_util.make_hierarchy(n)
+        if h is not None:
+            hierarchies.append(h)
+    
+    w3d_util.combine_hierarchies(hierarchies)
+        load_scene(a, paths, ignore_lightmap)
     
     #bpy.context.scene.game_settings.material_mode = 'GLSL'
     for scrn in bpy.data.screens:
