@@ -2,74 +2,81 @@ import os
 from . import w3d_struct
 
 def aggregate(root, paths):
-    ag_hlod(root, paths)
-    
-    ags = []
-    for a in ag_aggregate(root, paths):
-        ag_hlod(a, paths)
-        ags.append(a)
-    
-    return ags
+    ag_rec(root, root, paths)
+    root.log(2)
 
-def ag_aggregate(root, paths):
-    files = {}
+def ag_rec(node, root, paths, loaded={}):
+    expfiles = {}
+    impfiles = {}
     
-    ag = root.get('aggregate')
+    # load aggregates
+    ag = node.get('aggregate')
     if ag is not None:
+        loaded[ag.get('aggregate_header').Name] = True
+        
         ainfo = ag.get('aggregate_info')
-        files[ainfo.BaseModelName] = True
+        expfiles[ainfo.BaseModelName] = True
         for s in ainfo.Subobjects:
-            files[s['SubobjectName']] = True
+            expfiles[s['SubobjectName']] = True
     
-    return ag_load(files.keys(), paths)
-    
-def ag_hlod(root, paths):
-    files = {}
+    # mark hierarchy as loaded
+    hierarchy = node.get('hierarchy')
+    if hierarchy is not None:
+        loaded[hierarchy.get('hierarchy_header').Name] = True
     
     # hlod
-    hlod = root.get('hlod')
+    hlod = node.get('hlod')
     if hlod is not None:
         
         # hierarchy
         hinfo = hlod.get('hlod_header')
-        hierarchy = root.get('hierarchy')
-        if (hierarchy is None or
-            hinfo.HierarchyName != hierarchy.get('hierarchy_header').Name):
-            files[hinfo.HierarchyName] = True
-            
-        # object containers
-        m = root.getRec('mesh_header3')
-        ctr = m.ContainerName if m is not None else None
+        loaded[hinfo.Name] = True
+        
+        impfiles[hinfo.HierarchyName] = True
         
         for lod in hlod.find('hlod_lod_array'):
             for h in lod.find('hlod_sub_object'):
                 s = h.Name.split('.')
-                if len(s) > 1 and ctr != s[0]:
-                    files[s[0]] = True
+                impfiles[s[0]] = True
         
         for lod in hlod.find('hlod_aggregate_array'):
             for h in lod.find('hlod_sub_object'):
-                files[h.Name] = True
+                expfiles[h.Name] = True
     
-    # concat w3ds
-    concats = ag_load(files.keys(), paths)
-    for c in concats:
-        root.children += c.children
-
-def ag_load(files, paths):
-    roots = []
-    for file in files:
-        load = False
-        for path in paths:
-            filename = os.path.join(path, file.lower() + '.w3d')
-            try:
-                root = w3d_struct.load(filename)
-                roots.append(root)
-                load = True
-                break
-            except:
-                pass
-        if load == False:
-            print('MISSING: ' + file.lower() + '.w3d')
+    # Implicit aggregation
+    for f in impfiles.keys():
+        if f not in loaded:
+            loaded[f] = True
+            n = ag_load(f, paths)
+            
+            # remove hlod
+            ch = n.get('hlod')
+            if ch is not None:
+                n.children.remove(ch)
+            
+            root.children += n.children
+            ag_rec(n, root, paths, loaded)
+            
+    # Explicit aggregation
+    for f in expfiles.keys():
+        if f not in loaded:
+            loaded[f] = True
+            n = ag_load(f, paths)
+            root.children += n.children
+            ag_rec(n, root, paths, loaded)
     
-    return roots
+def ag_load(file, paths):
+    root = None
+    
+    for path in paths:
+        filename = os.path.join(path, file.lower() + '.w3d')
+        try:
+            root = w3d_struct.load(filename)
+            break
+        except:
+            pass
+    
+    if root is None:
+        print('MISSING: ' + file.lower() + '.w3d')
+    
+    return root

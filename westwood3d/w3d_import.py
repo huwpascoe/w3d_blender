@@ -99,27 +99,27 @@ def gen_mats(materials):
                     tree.links.new(nodetex.outputs[1], nodeout.inputs[0])
                     break
 def make_hierarchy(root, meshes):
-    hroot = root.get('hlod')
-    info = hroot.get('hlod_header')
-    
-    pivots = gen_pivots(root, info.HierarchyName)
-    gen_bones(pivots[0], info.HierarchyName)
-    
-    
-    lod = info.LodCount
-    for hlod in hroot.find('hlod_lod_array'):
-        lod -= 1
-        for h in hlod.find('hlod_sub_object'):
-            if h.Name in meshes:
-                m = meshes[h.Name][0]
-                m.parent = pivots[h.BoneIndex]
-                
-                for i in range(len(m.layers)):
-                    if m.layers[i]:
-                        m.layers[i + lod] = True
-                        m.layers[i] = False
-                        break
-                deform_mesh(m.data, meshes[h.Name][1], pivots)
+    for hroot in root.find('hlod'):
+        info = hroot.get('hlod_header')
+        
+        pivots = gen_pivots(root, info.HierarchyName)
+        gen_bones(pivots[0], info.HierarchyName)
+        
+        
+        lod = info.LodCount
+        for hlod in hroot.find('hlod_lod_array'):
+            lod -= 1
+            for h in hlod.find('hlod_sub_object'):
+                if h.Name in meshes:
+                    m = meshes[h.Name][0]
+                    m.parent = pivots[h.BoneIndex]
+                    
+                    for i in range(len(m.layers)):
+                        if m.layers[i]:
+                            m.layers[i + lod] = True
+                            m.layers[i] = False
+                            break
+                    deform_mesh(m.data, meshes[h.Name][1], pivots)
 
 def gen_bones(ob_tree, name):
     arm = bpy.data.armatures.new(name)
@@ -348,14 +348,8 @@ def read_some_data(context, filepath, ignore_lightmap):
     ]
     
     root = w3d_struct.load(filepath)
-    ags = aggregate.aggregate(root, paths)
-    
-    if len(ags) > 0:
-        for a in ags:
-            make_scene(a, paths, ignore_lightmap)
-        # join hierarchies here...
-    else:
-        make_scene(root, paths, ignore_lightmap)
+    aggregate.aggregate(root, paths)
+    make_scene(root, paths, ignore_lightmap)
     
     #bpy.context.scene.game_settings.material_mode = 'GLSL'
     for scrn in bpy.data.screens:
