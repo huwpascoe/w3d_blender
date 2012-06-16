@@ -23,7 +23,7 @@ def make_pivots(root):
         # Compile pivot data into a proper tree
         pivots = []
         for pdata in hierarchy.get('pivots').pivots:
-            p = { 'name': pdata['Name'], 'children': [], 'obj': [], 'prx': [] }
+            p = { 'id': len(pivots), 'name': pdata['Name'], 'children': [], 'obj': [] }
             
             if pdata['ParentIdx'] != 0xffffffff:
                 pivots[pdata['ParentIdx']]['children'].append(p)

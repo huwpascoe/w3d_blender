@@ -273,22 +273,58 @@ def load_images(root, paths):
         
         if img == None:
             print('image not loaded: ' + fn.name)
+def gen_pivots(p, parent=None):
 
+    ob = None
+    if len(p['obj']) == 1:
+        for name, lod in p['obj']:
+            ob = bpy.data.objects[name]
+    
+    if ob is not None:
+        ob.name = p['name']
+    else:
+        ob = bpy.data.objects.new(p['name'], None)
+        ob.empty_draw_size = 0.1
+        bpy.context.scene.objects.link(ob)
+    
+    ob.parent = parent
+    
+    ob.location = p['translation']
+    ob.rotation_mode = 'QUATERNION'
+    r = p['rotation']
+    ob.rotation_quaternion = (r[3], r[0], r[1], r[2])
+    ob.rotation_mode = 'XYZ'
+    
+    if len(p['obj']) > 1:
+        for name, lod in p['obj']:
+            if name in bpy.data.objects:
+                sub = bpy.data.objects[name]
+                sub.parent = ob
+    
+    for c in p['children']:
+        gen_pivots(c, ob)
+    
+    bpy.context.scene.update()
+    
+    for c in ob.children:
+        if c.type == 'MESH':
+            pass
+            #deform mesh
+    
+    
+    
 def load_scene(node, paths, ignore_lightmap):
     load_images(node, paths)
     
     materials = w3d_util.mat_reduce(node, ignore_lightmap)
-    hierarchy = w3d_util.make_hierarchy(node)
     pivots = w3d_util.make_pivots(node)
     
     gen_mats(materials)
     make_meshes(node)
     
-    for p in pivots:
-        for name, lod in p['obj']:
-            ob = bpy.data.objects[name]
-            if ob is not none:
-                pass
+    for p in pivots.values():
+        gen_pivots(p)
+    
     return
     lod = info.LodCount
     for hlod in hroot.find('hlod_lod_array'):
