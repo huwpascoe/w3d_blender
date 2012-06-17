@@ -515,6 +515,39 @@ class node_hlod_sub_object(node):
         self.Name = b2s(data[1])
     def write(self, file):
         pass
+class node_box(node):
+    def read(self, file, size):
+        data = read_struct(file, 'LL32s4B3f3f')
+        self.Version = data[0]
+        self.Attributes = data[1]
+        self.Name = b2s(data[2])
+        self.Color = (data[3], data[4], data[5])
+        self.Center = (data[7], data[8], data[9])
+        self.Extent = (data[10], data[11], data[12])
+    def write(self, file):
+        pass
+class node_sphere(node):
+    def read(self, file, size):
+        data = read_struct(file, 'LL32s4B3f3f')
+        self.Version = data[0]
+        self.Attributes = data[1]
+        self.Name = b2s(data[2])
+        self.Color = (data[3], data[4], data[5])
+        self.Center = (data[7], data[8], data[9])
+        self.Extent = (data[10], data[11], data[12])
+    def write(self, file):
+        pass
+class node_ring(node):
+    def read(self, file, size):
+        data = read_struct(file, 'LL32s4B3f3f')
+        self.Version = data[0]
+        self.Attributes = data[1]
+        self.Name = b2s(data[2])
+        self.Color = (data[3], data[4], data[5])
+        self.Center = (data[7], data[8], data[9])
+        self.Extent = (data[10], data[11], data[12])
+    def write(self, file):
+        pass
 class node_(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)

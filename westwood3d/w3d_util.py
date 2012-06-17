@@ -7,6 +7,12 @@ def collect_render_objects(root):
         info = m.get('mesh_header3')
         name = info.ContainerName + '.' + info.MeshName
         robj[name] = m
+    for s in root.find('box'):
+        robj[s.Name] = s
+    for s in root.find('sphere'):
+        robj[s.Name] = s
+    for s in root.find('ring'):
+        robj[s.Name] = s
     
     return robj
     

@@ -111,6 +111,28 @@ def deform_mesh(mesh, mdata, pivots):
     for v in bm.verts:
         v.co = pivots[inf[v.index]]['blender_object'].matrix_world * v.co
     bm.to_mesh(mesh)
+def make_shapes(root):
+    shapes = []
+    shapes += root.find('box')
+    shapes += root.find('sphere')
+    shapes += root.find('ring')
+    
+    for s in shapes:
+        ob = bpy.data.objects.new(s.Name, None)
+        ob.location = s.Center
+        ob.scale = s.Extent
+        
+        bpy.context.scene.objects.link(ob)
+        
+        if s.type() == 'ring':
+            ob.empty_draw_type = 'CIRCLE'
+        elif s.type() == 'sphere':
+            ob.empty_draw_type = 'SPHERE'
+        else: # box
+            ob.empty_draw_type = 'CUBE'
+        
+        # for pivot access
+        s.blender_object = ob
     
 def make_meshes(root):
     meshes = root.find('mesh')
@@ -284,7 +306,7 @@ def make_pivots(p, parent=None):
     
     # transformations and stuff
     ob.parent = parent
-    ob.location = p['translation']
+    ob.location += mathutils.Vector(p['translation'])
     ob.rotation_mode = 'QUATERNION'
     r = p['rotation']
     ob.rotation_quaternion = (r[3], r[0], r[1], r[2])
@@ -353,6 +375,7 @@ def load_scene(root, paths, ignore_lightmap):
     
     make_mats(materials)
     make_meshes(root)
+    make_shapes(root)
     
     for p in pivots.values():
         make_pivots(p)
