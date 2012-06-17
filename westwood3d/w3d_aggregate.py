@@ -3,7 +3,6 @@ from . import w3d_struct
 
 def aggregate(root, paths):
     ag_rec(root, root, paths)
-    root.log(2)
 
 def ag_rec(node, root, paths, loaded={}):
     expfiles = {}

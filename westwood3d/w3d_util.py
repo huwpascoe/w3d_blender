@@ -1,4 +1,73 @@
 import copy
+
+def collect_render_objects(root):
+    robj = {}
+    
+    for m in root.find('mesh'):
+        info = m.get('mesh_header3')
+        name = info.ContainerName + '.' + info.MeshName
+        robj[name] = m
+    
+    return robj
+    
+def make_pivots(root, robj):
+    pivotdict = {}
+    
+    for hroot in root.find('hlod'):
+        if hroot is None:
+            continue
+        
+        info = hroot.get('hlod_header')
+        
+        hierarchy = None
+        hname = None
+        for h in root.find('hierarchy'):
+            hname = h.get('hierarchy_header').Name
+            if info.HierarchyName == hname:
+                hierarchy = h
+                break
+        
+        if hierarchy is None:
+            continue
+        
+        # Compile pivot data into a proper tree
+        pivots = []
+        for pdata in hierarchy.get('pivots').pivots:
+            p = {
+                'index': pivots, 'name': pdata['Name'], 'agname': pdata['Name'],
+                'children': [], 'obj': [], 'prx': [], 'lodcount': info.LodCount,
+            }
+            
+            if pdata['ParentIdx'] != 0xffffffff:
+                pivots[pdata['ParentIdx']]['children'].append(p)
+            else:
+                p['name'] = info.Name
+                pivotdict[info.Name] = p
+            
+            p['translation'] = pdata['Translation']
+            p['rotation'] = pdata['Rotation']
+            pivots.append(p)
+        
+        # Assign name-lod tuple to pivots
+        lod = info.LodCount
+        for hlod in hroot.find('hlod_lod_array'):
+            lod -= 1
+            for h in hlod.find('hlod_sub_object'):
+                if h.Name in robj:
+                    pivots[h.BoneIndex]['obj'].append((robj[h.Name], lod))
+        
+        # aggregates appear in all LOD
+        for hlod in hroot.find('hlod_aggregate_array'):
+            for h in hlod.find('hlod_sub_object'):
+                if h.Name in robj:
+                    pivots[h.BoneIndex]['obj'].append((robj[h.Name], -1))
+        
+        # proxy objects are special
+        for hlod in hroot.find('hlod_proxy_array'):
+            for h in hlod.find('hlod_sub_object'):
+                pivots[h.BoneIndex]['prx'].append(h.Name)
+    
+    return pivotdict
     
 def mat_reduce(root, ignore_lightmap):
     materials = []
