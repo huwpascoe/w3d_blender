@@ -135,7 +135,7 @@ def gen_b(ob, arm, parent=None):
     for c in ob.children:
         gen_b(c, arm, bone)
     
-def deform_mesh(mesh, mdata, pivots):
+def deform_mesh(mesh, mdata, ob):
     inf = mdata.get('vertex_influences')
     if inf is None:
         return
@@ -144,7 +144,7 @@ def deform_mesh(mesh, mdata, pivots):
     bm = bmesh.new()
     bm.from_mesh(mesh)
     for v in bm.verts:
-        v.co = pivots[inf[v.index]].matrix_world * v.co
+        v.co = pivots[inf[v.index]]['blender'].matrix_world * v.co
     bm.to_mesh(mesh)
     
 def make_meshes(root):
@@ -249,6 +249,9 @@ def make_meshes(root):
                     if i < len(tids) - 1:
                         i += 1
         
+        # for later access
+        me.w3d_temp = m
+    
 def load_images(root, paths):
     # get every image
     filenames = root.findRec('texture_name')
@@ -273,18 +276,29 @@ def load_images(root, paths):
         
         if img == None:
             print('image not loaded: ' + fn.name)
-def gen_pivots(p, parent=None):
+def shift_layer(ob, n):
+    for i in range(len(ob.layers)):
+        if ob.layers[i]:
+            ob.layers[i + n] = True
+            ob.layers[i] = False
+            break
 
+def gen_pivots(p, parent=None):
     ob = None
+    lod = 0
     if len(p['obj']) == 1:
         for name, lod in p['obj']:
-            ob = bpy.data.objects[name]
-    
-    if ob is not None:
-        ob.name = p['name']
-    else:
+            if name in bpy.data.objects:
+                ob = bpy.data.objects[name]
+                if lod > 0:
+                    shift_layer(ob, lod)
+    if ob is None:
         ob = bpy.data.objects.new(p['name'], None)
-        ob.empty_draw_size = 0.1
+        if lod == -2:
+            ob.empty_draw_type = 'CUBE'
+            ob.show_x_ray = True
+        else:
+            ob.empty_draw_size = 0.1
         bpy.context.scene.objects.link(ob)
     
     ob.parent = parent
@@ -300,6 +314,10 @@ def gen_pivots(p, parent=None):
             if name in bpy.data.objects:
                 sub = bpy.data.objects[name]
                 sub.parent = ob
+                if lod > 0:
+                    shift_layer(sub, lod)
+    
+    p['blender'] = ob
     
     for c in p['children']:
         gen_pivots(c, ob)
@@ -308,8 +326,7 @@ def gen_pivots(p, parent=None):
     
     for c in ob.children:
         if c.type == 'MESH':
-            pass
-            #deform mesh
+            deform_mesh(c.data, c.data.w3d_temp, p['index'])
     
     
     
@@ -324,22 +341,6 @@ def load_scene(node, paths, ignore_lightmap):
     
     for p in pivots.values():
         gen_pivots(p)
-    
-    return
-    lod = info.LodCount
-    for hlod in hroot.find('hlod_lod_array'):
-        lod -= 1
-        for h in hlod.find('hlod_sub_object'):
-            if h.Name in meshes:
-                m = meshes[h.Name][0]
-                m.parent = pivots[h.BoneIndex]
-                
-                for i in range(len(m.layers)):
-                    if m.layers[i]:
-                        m.layers[i + lod] = True
-                        m.layers[i] = False
-                        break
-                deform_mesh(m.data, meshes[h.Name][1], pivots)
     
 # blender stuff
 def read_some_data(context, filepath, ignore_lightmap):
