@@ -4,7 +4,7 @@ import mathutils
 import os
 from . import w3d_struct, w3d_aggregate, w3d_util
 
-def gen_mats(materials):
+def make_mats(materials):
     for mdata in materials:
         pdata = mdata['mpass']
         
@@ -99,43 +99,8 @@ def gen_mats(materials):
                     tree.links.new(nodetex.outputs[1], nodeout.inputs[0])
                     break
 
-def gen_bones(ob_tree, name):
-    arm = bpy.data.armatures.new(name)
-    ob = bpy.data.objects.new(name, arm)
-    bpy.context.scene.objects.link(ob)
-    bpy.context.scene.objects.active = ob
-    bpy.ops.object.mode_set(mode='EDIT')
-    gen_b(ob_tree, arm)
-    bpy.ops.object.mode_set(mode='OBJECT')
 
-def gen_b(ob, arm, parent=None):
-    
-    bone = arm.edit_bones.new(ob.name)
-    
-    if ob.location.length > 0:
-        # Leaf nodes don't have tails so invent one
-        bone.tail = (ob.location.length * 0.5,0,0)
-    else:
-        # X-Up axis for bones apparently
-        bone.tail = (0.1,0,0)
-    
-    # Seems to work
-    bone.transform(ob.matrix_world)
-    if bone.vector.y >= 0:
-        bone.roll = -bone.roll
-    
-    # can have connected or loose bones
-    if parent:
-        if len(ob.parent.children) == 1 and (parent.head - bone.head).length > 0.001:
-            parent.tail = bone.head
-        else:
-            bone.use_connect = False
-        bone.parent = parent
-    
-    for c in ob.children:
-        gen_b(c, arm, bone)
-    
-def deform_mesh(mesh, mdata, ob):
+def deform_mesh(mesh, mdata, pivots):
     inf = mdata.get('vertex_influences')
     if inf is None:
         return
@@ -144,7 +109,7 @@ def deform_mesh(mesh, mdata, ob):
     bm = bmesh.new()
     bm.from_mesh(mesh)
     for v in bm.verts:
-        v.co = pivots[inf[v.index]]['blender'].matrix_world * v.co
+        v.co = pivots[inf[v.index]]['blender_object'].matrix_world * v.co
     bm.to_mesh(mesh)
     
 def make_meshes(root):
@@ -249,8 +214,8 @@ def make_meshes(root):
                     if i < len(tids) - 1:
                         i += 1
         
-        # for later access
-        me.w3d_temp = m
+        # for pivot access
+        m.blender_object = ob
     
 def load_images(root, paths):
     # get every image
@@ -276,71 +241,132 @@ def load_images(root, paths):
         
         if img == None:
             print('image not loaded: ' + fn.name)
+    
 def shift_layer(ob, n):
     for i in range(len(ob.layers)):
         if ob.layers[i]:
             ob.layers[i + n] = True
             ob.layers[i] = False
             break
-
-def gen_pivots(p, parent=None):
-    ob = None
-    lod = 0
-    if len(p['obj']) == 1:
-        for name, lod in p['obj']:
-            if name in bpy.data.objects:
-                ob = bpy.data.objects[name]
-                if lod > 0:
-                    shift_layer(ob, lod)
-    if ob is None:
-        ob = bpy.data.objects.new(p['name'], None)
-        if lod == -2:
-            ob.empty_draw_type = 'CUBE'
-            ob.show_x_ray = True
+    
+def make_pivots(p, parent=None):
+    
+    subobj = []
+    
+    # get sub objects
+    for data, lod in p['obj']:
+        obj = data.blender_object
+        subobj.append(obj)
+        if lod == -1:
+            for i in range(p['lodcount']):
+                obj.layers[i] = True
         else:
-            ob.empty_draw_size = 0.1
+            shift_layer(obj, lod)
+    
+    # proxy objects
+    for name in p['prx']:
+        ob = bpy.data.objects.new(name, None)
+        ob.empty_draw_type = 'CUBE'
+        ob.show_x_ray = True
         bpy.context.scene.objects.link(ob)
+        for i in range(p['lodcount']):
+            ob.layers[i] = True
+        subobj.append(ob)
     
+    # create node
+    if len(subobj) == 1:
+        ob = subobj[0]
+    else:
+        ob = bpy.data.objects.new(p['name'], None)
+        bpy.context.scene.objects.link(ob)
+        for sub in subobj:
+            sub.parent = ob
+    
+    # transformations and stuff
     ob.parent = parent
-    
     ob.location = p['translation']
     ob.rotation_mode = 'QUATERNION'
     r = p['rotation']
     ob.rotation_quaternion = (r[3], r[0], r[1], r[2])
     ob.rotation_mode = 'XYZ'
     
-    if len(p['obj']) > 1:
-        for name, lod in p['obj']:
-            if name in bpy.data.objects:
-                sub = bpy.data.objects[name]
-                sub.parent = ob
-                if lod > 0:
-                    shift_layer(sub, lod)
-    
-    p['blender'] = ob
-    
+    # recursive
     for c in p['children']:
-        gen_pivots(c, ob)
+        make_pivots(c, ob)
     
+    p['blender_object'] = ob
+    
+    # deform all meshes to match bones
     bpy.context.scene.update()
+    for data, lod in p['obj']:
+        if data.type() == 'mesh':
+            if data.get('vertex_influences') is not None:
+                deform_mesh(data.blender_object.data, data, p['index'])
+    
+def make_bones(ob_tree):
+    name = ob_tree.name
+    ob_tree.name = 'temp'
+    arm = bpy.data.armatures.new(name)
+    ob = bpy.data.objects.new(name, arm)
+    bpy.context.scene.objects.link(ob)
+    bpy.context.scene.objects.active = ob
+    bpy.ops.object.mode_set(mode='EDIT')
+    make_b(ob_tree, arm)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+def make_b(ob, arm, parent=None):
+    
+    bone = arm.edit_bones.new(ob.name)
+    
+    if ob.location.length > 0:
+        # Leaf nodes don't have tails so invent one
+        bone.tail = (ob.location.length * 0.5,0,0)
+    else:
+        # X-Up axis for bones apparently
+        bone.tail = (0.1,0,0)
+    
+    # Seems to work
+    bone.transform(ob.matrix_world)
+    if bone.vector.y >= 0:
+        bone.roll = -bone.roll
+    
+    # can have connected or loose bones
+    if parent:
+        if len(ob.parent.children) == 1 and (parent.head - bone.head).length > 0.001:
+            parent.tail = bone.head
+        else:
+            bone.use_connect = False
+        bone.parent = parent
     
     for c in ob.children:
-        if c.type == 'MESH':
-            deform_mesh(c.data, c.data.w3d_temp, p['index'])
+        make_b(c, arm, bone)
     
     
+def load_scene(root, paths, ignore_lightmap):
     
-def load_scene(node, paths, ignore_lightmap):
-    load_images(node, paths)
+    load_images(root, paths)
     
-    materials = w3d_util.mat_reduce(node, ignore_lightmap)
-    pivots = w3d_util.make_pivots(node)
+    materials = w3d_util.mat_reduce(root, ignore_lightmap)
     
-    gen_mats(materials)
-    make_meshes(node)
+    robj = w3d_util.collect_render_objects(root)
+    pivots = w3d_util.make_pivots(root, robj)
+    
+    make_mats(materials)
+    make_meshes(root)
     
     for p in pivots.values():
-        gen_pivots(p)
+        make_pivots(p)
+    
+    # load aggregates
+    for ag in root.find('aggregate'):
+        info = ag.get('aggregate_info')
+        index = pivots[info.BaseModelName]['index']
+        for s in info.Subobjects:
+            bone = s['BoneName']
+            for i in index:
+                if i['agname'] == bone:
+                    break
+            pivots[s['SubobjectName']]['blender_object'].parent = i['blender_object']
     
 # blender stuff
 def read_some_data(context, filepath, ignore_lightmap):

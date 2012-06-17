@@ -1,6 +1,16 @@
 import copy
 
-def make_pivots(root):
+def collect_render_objects(root):
+    robj = {}
+    
+    for m in root.find('mesh'):
+        info = m.get('mesh_header3')
+        name = info.ContainerName + '.' + info.MeshName
+        robj[name] = m
+    
+    return robj
+    
+def make_pivots(root, robj):
     pivotdict = {}
     
     for hroot in root.find('hlod'):
@@ -24,14 +34,15 @@ def make_pivots(root):
         pivots = []
         for pdata in hierarchy.get('pivots').pivots:
             p = {
-                'index': pivots, 'name': pdata['Name'],
-                'children': [], 'obj': []
+                'index': pivots, 'name': pdata['Name'], 'agname': pdata['Name'],
+                'children': [], 'obj': [], 'prx': [], 'lodcount': info.LodCount,
             }
             
             if pdata['ParentIdx'] != 0xffffffff:
                 pivots[pdata['ParentIdx']]['children'].append(p)
             else:
-                pivotdict[hname] = p
+                p['name'] = info.Name
+                pivotdict[info.Name] = p
             
             p['translation'] = pdata['Translation']
             p['rotation'] = pdata['Rotation']
@@ -42,17 +53,19 @@ def make_pivots(root):
         for hlod in hroot.find('hlod_lod_array'):
             lod -= 1
             for h in hlod.find('hlod_sub_object'):
-                pivots[h.BoneIndex]['obj'].append((h.Name, lod))
+                if h.Name in robj:
+                    pivots[h.BoneIndex]['obj'].append((robj[h.Name], lod))
         
         # aggregates appear in all LOD
         for hlod in hroot.find('hlod_aggregate_array'):
             for h in hlod.find('hlod_sub_object'):
-                pivots[h.BoneIndex]['obj'].append((h.Name, -1))
+                if h.Name in robj:
+                    pivots[h.BoneIndex]['obj'].append((robj[h.Name], -1))
         
         # proxy objects are special
         for hlod in hroot.find('hlod_proxy_array'):
             for h in hlod.find('hlod_sub_object'):
-                pivots[h.BoneIndex]['obj'].append((h.Name, -2))
+                pivots[h.BoneIndex]['prx'].append(h.Name)
     
     return pivotdict
     

@@ -161,9 +161,10 @@ class node:
         file.read(size)
     def write(self, file):
         pass
-        
+    def type(self):
+        return self.__class__.__name__[5:]
     def log(self, max, indent=0):
-        print(('\t'*indent) + self.__class__.__name__[5:])
+        print(('\t'*indent) + self.type())
         
         indent += 1
         
@@ -177,12 +178,12 @@ class node:
         
     def get(self, name):
         for i in self.children:
-            if i.__class__.__name__[5:] == name:
+            if i.type() == name:
                 return i
         return None
     def getRec(self, name):
         for i in self.children:
-            if i.__class__.__name__[5:] == name:
+            if i.type() == name:
                 return i
             res = i.getRec(name)
             if res != None:
@@ -191,14 +192,14 @@ class node:
     def find(self, name):
         all = []
         for i in self.children:
-            if i.__class__.__name__[5:] == name:
+            if i.type() == name:
                 all.append(i)
         return all
     def findRec(self, name, all=None):
         if all == None:
             all = []
         for i in self.children:
-            if i.__class__.__name__[5:] == name:
+            if i.type() == name:
                 all.append(i)
             i.findRec(name, all)
         return all
