@@ -2,6 +2,8 @@ import struct
 
 def b2s(str):
     return str.split(b'\0')[0].decode('utf-8')
+def s2b(str):
+    return str.encode('utf-8')
 
 w3d_keys = {
     0x00000000: 'MESH',
@@ -154,13 +156,30 @@ w3d_keys = {
     0x00000A02: 'SOUNDROBJ_DEFINITION',
 }
 
+w3d_save_keys = {v:k for k, v in w3d_keys.items()}
+
 class node:
     children = []
+    binary = None
+    size = 0
     
     def read(self, file, size):
-        file.read(size)
+        self.children = parse_nodes(file, size)
     def write(self, file):
-        pass
+        if(self.type() == 'hierarchy'):
+            print(self.type() +'='+ str(self.size))
+        file.write(struct.pack('LL',
+            w3d_save_keys[self.type().upper()],
+            self.size | 0x80000000
+        ))
+        if self.binary is not None:
+            file.write(self.binary)
+        for c in self.children:
+            c.write(file)
+    def pack(self):
+        for c in self.children:
+            c.pack()
+            self.size += 8 + c.size
     def type(self):
         return self.__class__.__name__[5:]
     def log(self, max, indent=0):
@@ -207,8 +226,6 @@ class node:
 class node_mesh(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_mesh_header3(node):
     def read(self, file, size):
         data = read_struct(file, 'LL16s16sLLLLlLLLL3f3f3ff')
@@ -229,8 +246,27 @@ class node_mesh_header3(node):
         self.Max = (data[16], data[17], data[18])
         self.SphCenter = (data[19], data[20], data[21])
         self.SphRadius = data[22]
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = struct.pack('LL16s16sLLLLlLLLL3f3f3ff',
+            self.Version,
+            self.Attributes,
+            s2b(self.MeshName),
+            s2b(self.ContainerName),
+            self.NumTris,
+            self.NumVertices,
+            self.NumMaterials,
+            self.NumDamageStages,
+            self.SortLevel,
+            self.PrelitVersion,
+            self.FutureCounts,
+            self.VertexChannels,
+            self.FaceChannels,
+            self.Min[0],self.Min[1],self.Min[2],
+            self.Max[0],self.Max[1],self.Max[2],
+            self.SphCenter[0], self.SphCenter[1], self.SphCenter[2],
+            self.SphRadius,
+        )
+        self.size += struct.calcsize('LL16s16sLLLLlLLLL3f3f3ff')
 class node_vertices(node):
     def read(self, file, size):
         self.vertices = []
@@ -238,8 +274,13 @@ class node_vertices(node):
             data = read_struct(file, '3f')
             self.vertices.append((data[0], data[1], data[2]))
             size -= struct.calcsize('3f')
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = b''
+        for v in self.vertices:
+            self.binary += struct.pack('3f',
+                v[0], v[1], v[2]
+            )
+            self.size += struct.calcsize('3f')
 class node_vertex_normals(node):
     def read(self, file, size):
         self.normals = []
@@ -247,8 +288,13 @@ class node_vertex_normals(node):
             data = read_struct(file, '3f')
             self.normals.append((data[0], data[1], data[2]))
             size -= struct.calcsize('3f')
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = b''
+        for v in self.normals:
+            self.binary += struct.pack('3f',
+                v[0], v[1], v[2]
+            )
+            self.size += struct.calcsize('3f')
 class node_vertex_influences(node):
     def read(self, file, size):
         self.influences = []
@@ -256,8 +302,13 @@ class node_vertex_influences(node):
             data = read_struct(file, 'H6B')
             self.influences.append(data[0])
             size -= struct.calcsize('H6B')
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = b''
+        for i in self.influences:
+            self.binary += struct.pack('H6B',
+                i, 0, 0, 0, 0, 0, 0
+            )
+            self.size += struct.calcsize('H6B')
 class node_triangles(node):
     def read(self, file, size):
         self.triangles = []
@@ -270,26 +321,32 @@ class node_triangles(node):
                 'Dist': data[7],
             })
             size -= struct.calcsize('3LL3ff')
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = b''
+        for t in self.triangles:
+            self.binary += struct.pack('3LL3ff',
+                t['Vindex'][0], t['Vindex'][1], t['Vindex'][2],
+                t['Attributes'],
+                t['Normal'][0], t['Normal'][1], t['Normal'][2],
+                t['Dist']
+            )
+            self.size += struct.calcsize('3LL3ff')
 class node_vertex_materials(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_vertex_material(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_vertex_material_name(node):
     def read(self, file, size):
         self.name = b2s(file.read(size))
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = s2b(self.name)
+        self.size = len(self.binary)
 class node_vertex_material_info(node):
     def read(self, file, size):
         data = read_struct(file, 'L4B4B4B4Bfff')
+        self.Attributes = data[0]
         self.Ambient = (data[1], data[2], data[3])
         self.Diffuse = (data[5], data[6], data[7])
         self.Specular = (data[9], data[10], data[11])
@@ -299,8 +356,18 @@ class node_vertex_material_info(node):
         self.Translucency = data[19]
         self.Mapping0 = data[0] >> 16 & 0xFF
         self.Mapping1 = data[0] >> 8 & 0xFF
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = struct.pack('L4B4B4B4Bfff',
+            self.Attributes,
+            self.Ambient[0], self.Ambient[1], self.Ambient[2], 0,
+            self.Diffuse[0], self.Diffuse[1], self.Diffuse[2], 0,
+            self.Specular[0], self.Specular[1], self.Specular[2], 0,
+            self.Emissive[0], self.Emissive[1], self.Emissive[2], 0,
+            self.Shininess,
+            self.Opacity,
+            self.Translucency
+        )
+        self.size += struct.calcsize('L4B4B4B4Bfff')
 class node_dcg(node):
     def read(self, file, size):
         self.dcg = []
@@ -308,13 +375,18 @@ class node_dcg(node):
             data = read_struct(file, '4B')
             self.dcg.append((data[0], data[1], data[2], data[3]))
             size -= struct.calcsize('4B')
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = b''
+        for c in self.dcg:
+            self.binary += struct.pack('4B',
+                c[0], c[1], c[2], c[3]
+            )
+            self.size += struct.calcsize('4B')
+    
 class node_prelit_lightmap_multi_pass(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
+    
 class node_material_info(node):
     def read(self, file, size):
         data = read_struct(file, 'LLLL')
@@ -322,13 +394,18 @@ class node_material_info(node):
         self.VertexMaterialCount = data[1]
         self.ShaderCount = data[2]
         self.TextureCount = data[3]
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = struct.pack('LLLL',
+            self.PassCount,
+            self.VertexMaterialCount,
+            self.ShaderCount,
+            self.TextureCount
+        )
+        self.size += struct.calcsize('LLLL')
+    
 class node_material_pass(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_vertex_material_ids(node):
     def read(self, file, size):
         self.ids = []
@@ -336,8 +413,13 @@ class node_vertex_material_ids(node):
             data = read_struct(file, 'L')
             self.ids.append(data[0])
             size -= struct.calcsize('L')
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = b''
+        for i in self.ids:
+            self.binary += struct.pack('L',
+                i
+            )
+            self.size += struct.calcsize('L')
 class node_shader_ids(node):
     def read(self, file, size):
         self.ids = []
@@ -345,8 +427,13 @@ class node_shader_ids(node):
             data = read_struct(file, 'L')
             self.ids.append(data[0])
             size -= struct.calcsize('L')
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = b''
+        for i in self.ids:
+            self.binary += struct.pack('L',
+                i
+            )
+            self.size += struct.calcsize('L')
 class node_shaders(node):
     def read(self, file, size):
         self.shaders = []
@@ -369,13 +456,31 @@ class node_shaders(node):
                 'PostDetailAlphaFunc': data[14]
             })
             size -= struct.calcsize('16B')
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = b''
+        for s in self.shaders:
+            self.binary += struct.pack('16B',
+                s['DepthCompare'],
+                s['DepthMask'],
+                0,
+                s['DestBlend'],
+                0,
+                s['PriGradient'],
+                s['SecGradient'],
+                s['SrcBlend'],
+                s['Texturing'],
+                s['DetailColorFunc'],
+                s['DetailAlphaFunc'],
+                0,
+                s['AlphaTest'],
+                s['PostDetailColorFunc'],
+                s['PostDetailAlphaFunc'],
+                0
+            )
+            self.size += struct.calcsize('16B')
 class node_texture_stage(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_texture_ids(node):
     def read(self, file, size):
         self.ids = []
@@ -383,8 +488,13 @@ class node_texture_ids(node):
             data = read_struct(file, 'L')
             self.ids.append(data[0])
             size -= struct.calcsize('L')
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = b''
+        for i in self.ids:
+            self.binary += struct.pack('L',
+                i
+            )
+            self.size += struct.calcsize('L')
 class node_stage_texcoords(node):
     def read(self, file, size):
         self.texcoords = []
@@ -392,33 +502,31 @@ class node_stage_texcoords(node):
             data = read_struct(file, '2f')
             self.texcoords.append((data[0], data[1]))
             size -= struct.calcsize('2f')
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = b''
+        for t in self.texcoords:
+            self.binary += struct.pack('2f',
+                t[0], t[1]
+            )
+            self.size += struct.calcsize('2f')
 class node_texture_texcoords(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_textures(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_texture(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_hierarchy(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_texture_name(node):
     def read(self, file, size):
         self.name = b2s(file.read(size))
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = s2b(self.name)
+        self.size = len(self.binary)
 class node_hierarchy_header(node):
     def read(self, file, size):
         data = read_struct(file, 'L16sL3f')
@@ -426,8 +534,14 @@ class node_hierarchy_header(node):
         self.Name = b2s(data[1])
         self.NumPivots = data[2]
         self.Center = (data[3], data[4], data[5])
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = struct.pack('L16sL3f',
+            self.Version,
+            s2b(self.Name),
+            self.NumPivots,
+            self.Center[0],self.Center[1],self.Center[2],
+        )
+        self.size += struct.calcsize('L16sL3f')
 class node_pivots(node):
     def read(self, file, size):
         self.pivots = []
@@ -441,20 +555,31 @@ class node_pivots(node):
                 'Rotation': (data[8],data[9],data[10],data[11])
             })
             size -= struct.calcsize('16sL3f3f4f')
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = b''
+        for p in self.pivots:
+            self.binary += struct.pack('16sL3f3f4f',
+                s2b(p['Name']),
+                p['ParentIdx'],
+                p['Translation'][0],p['Translation'][1],p['Translation'][2],
+                p['EulerAngles'][0],p['EulerAngles'][1],p['EulerAngles'][2],
+                p['Rotation'][0],p['Rotation'][1],p['Rotation'][2],p['Rotation'][3],
+            )
+            self.size += struct.calcsize('16sL3f3f4f')
 class node_aggregate(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_aggregate_header(node):
     def read(self, file, size):
         data = read_struct(file, 'L16s')
         self.Version = data[0]
         self.Name = b2s(data[1])
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = struct.pack('L16s',
+            self.Version,
+            b2s(self.Name)
+        )
+        self.size += struct.calcsize('L16s')
 class node_aggregate_info(node):
     def read(self, file, size):
         data = read_struct(file, '32sL')
@@ -470,20 +595,32 @@ class node_aggregate_info(node):
                 'BoneName': b2s(data[1])
             })
             size -= struct.calcsize('32s32s')
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = struct.pack('32sL',
+            b2s(self.BaseModelName),
+            self.SubobjectCount
+        )
+        self.size = struct.calcsize('32sL')
+        for s in self.Subobjects:
+            self.binary += struct.pack('32s32s',
+                s2b(s['SubobjectName']), s2b(s['BoneName'])
+            )
+            self.size += struct.calcsize('32s32s')
 class node_aggregate_class_info(node):
     def read(self, file, size):
         data = read_struct(file, 'LL3L')
         self.OriginalClassID = data[0]
         self.Flags = data[1]
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = struct.pack('LL3L',
+            self.OriginalClassID,
+            self.Flags,
+            0, 0, 0
+        )
+        self.size += struct.calcsize('LL3L')
 class node_hlod(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_hlod_header(node):
     def read(self, file, size):
         data = read_struct(file, 'LL16s16s')
@@ -491,30 +628,34 @@ class node_hlod_header(node):
         self.LodCount = data[1]
         self.Name = b2s(data[2])
         self.HierarchyName = b2s(data[3])
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = struct.pack('LL16s16s',
+            self.Version,
+            self.LodCount,
+            s2b(self.Name),
+            s2b(self.HierarchyName)
+        )
+        self.size += struct.calcsize('LL16s16s')
 class node_hlod_lod_array(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_hlod_aggregate_array(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_hlod_proxy_array(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
 class node_hlod_sub_object(node):
     def read(self, file, size):
         data = read_struct(file, 'L32s')
         self.BoneIndex = data[0]
         self.Name = b2s(data[1])
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = struct.pack('L32s',
+            self.BoneIndex,
+            s2b(self.Name)
+        )
+        self.size += struct.calcsize('L32s')
 class node_box(node):
     def read(self, file, size):
         data = read_struct(file, 'LL32s4B3f3f')
@@ -524,8 +665,16 @@ class node_box(node):
         self.Color = (data[3], data[4], data[5])
         self.Center = (data[7], data[8], data[9])
         self.Extent = (data[10], data[11], data[12])
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = struct.pack('LL32s4B3f3f',
+            self.Version,
+            self.Attributes,
+            s2b(self.Name),
+            self.Color[0], self.Color[1], self.Color[2], 0,
+            self.Center[0], self.Center[1], self.Center[2],
+            self.Extent[0], self.Extent[1], self.Extent[2],
+        )
+        self.size += struct.calcsize('LL32s4B3f3f')
 class node_sphere(node):
     def read(self, file, size):
         data = read_struct(file, 'LL32s4B3f3f')
@@ -535,8 +684,16 @@ class node_sphere(node):
         self.Color = (data[3], data[4], data[5])
         self.Center = (data[7], data[8], data[9])
         self.Extent = (data[10], data[11], data[12])
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = struct.pack('LL32s4B3f3f',
+            self.Version,
+            self.Attributes,
+            b2s(self.Name),
+            self.Color[0], self.Color[1], self.Color[2], 0,
+            self.Center[0], self.Center[1], self.Center[2],
+            self.Extent[0], self.Extent[1], self.Extent[2],
+        )
+        self.size += struct.calcsize('LL32s4B3f3f')
 class node_ring(node):
     def read(self, file, size):
         data = read_struct(file, 'LL32s4B3f3f')
@@ -546,13 +703,19 @@ class node_ring(node):
         self.Color = (data[3], data[4], data[5])
         self.Center = (data[7], data[8], data[9])
         self.Extent = (data[10], data[11], data[12])
-    def write(self, file):
-        pass
+    def pack(self):
+        self.binary = struct.pack('LL32s4B3f3f',
+            self.Version,
+            self.Attributes,
+            b2s(self.Name),
+            self.Color[0], self.Color[1], self.Color[2], 0,
+            self.Center[0], self.Center[1], self.Center[2],
+            self.Extent[0], self.Extent[1], self.Extent[2],
+        )
+        self.size += struct.calcsize('LL32s4B3f3f')
 class node_(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
-    def write(self, file):
-        pass
         
 # loading algorithm
 
@@ -591,12 +754,13 @@ def parse_nodes(file, size=0x7FFFFFFF):
         # instantiate and load node
         try:
             the_node = globals()['node_' + ci[0].lower()]()
+            the_node.read(file, ci[1])
+            nodes.append(the_node)
+            if(the_node.type() == 'hierarchy'):
+                print('<'+the_node.type() +'='+ str(ci[1]))
         except KeyError:
-            the_node = node()
-            the_node.unknown = ci[0]
-        
-        the_node.read(file, ci[1])
-        nodes.append(the_node)
+            file.read(ci[1])
+            print('ignored: node_' + ci[0].lower())
         
         # limit size for nested chunks
         size -= 8 + ci[1] # header size + chunk size
