@@ -2,8 +2,13 @@ import struct
 
 def b2s(str):
     return str.split(b'\0')[0].decode('utf-8')
-def s2b(str):
-    return str.encode('utf-8')
+def s2b(str, s=None):
+    str = str.encode('utf-8')
+    if s is not None and len(str) >= s:
+        str = str[:s - 1]
+    return str + b'\0'
+def ver(major, minor):
+    return (((major) << 16) | (minor))
 
 w3d_keys = {
     0x00000000: 'MESH',
@@ -159,15 +164,13 @@ w3d_keys = {
 w3d_save_keys = {v:k for k, v in w3d_keys.items()}
 
 class node:
-    children = []
-    binary = None
-    size = 0
-    
+    def __init__(self):
+        self.children = []
+        self.binary = None
+        self.size = 0
     def read(self, file, size):
         self.children = parse_nodes(file, size)
     def write(self, file):
-        if(self.type() == 'hierarchy'):
-            print(self.type() +'='+ str(self.size))
         file.write(struct.pack('LL',
             w3d_save_keys[self.type().upper()],
             self.size | 0x80000000
@@ -194,7 +197,10 @@ class node:
         if indent < max:
             for n in self.children:
                 n.log(max, indent)
-        
+    def add(self, type):
+        c = globals()['node_' + type]()
+        self.children.append(c)
+        return c
     def get(self, name):
         for i in self.children:
             if i.type() == name:
@@ -227,6 +233,25 @@ class node_mesh(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
 class node_mesh_header3(node):
+    def __init__(self):
+        super(node_mesh_header3, self).__init__()
+        self.Version = ver(4,2)
+        self.Attributes = 0
+        self.MeshName = 'UNTITLED'
+        self.ContainerName = 'UNTITLED'
+        self.NumTris = 0
+        self.NumVertices = 0
+        self.NumMaterials = 0
+        self.NumDamageStages = 0
+        self.SortLevel = 0
+        self.PrelitVersion = 0
+        self.FutureCounts = 0
+        self.VertexChannels = 3
+        self.FaceChannels = 1
+        self.Min = (0,0,0)
+        self.Max = (0,0,0)
+        self.SphCenter = (0,0,0)
+        self.SphRadius = 0
     def read(self, file, size):
         data = read_struct(file, 'LL16s16sLLLLlLLLL3f3f3ff')
         self.Version = data[0]
@@ -250,8 +275,8 @@ class node_mesh_header3(node):
         self.binary = struct.pack('LL16s16sLLLLlLLLL3f3f3ff',
             self.Version,
             self.Attributes,
-            s2b(self.MeshName),
-            s2b(self.ContainerName),
+            s2b(self.MeshName, 16),
+            s2b(self.ContainerName, 16),
             self.NumTris,
             self.NumVertices,
             self.NumMaterials,
@@ -268,8 +293,10 @@ class node_mesh_header3(node):
         )
         self.size += struct.calcsize('LL16s16sLLLLlLLLL3f3f3ff')
 class node_vertices(node):
-    def read(self, file, size):
+    def __init__(self):
+        super(node_vertices, self).__init__()
         self.vertices = []
+    def read(self, file, size):
         while size > 0:
             data = read_struct(file, '3f')
             self.vertices.append((data[0], data[1], data[2]))
@@ -282,8 +309,10 @@ class node_vertices(node):
             )
             self.size += struct.calcsize('3f')
 class node_vertex_normals(node):
-    def read(self, file, size):
+    def __init__(self):
+        super(node_vertex_normals, self).__init__()
         self.normals = []
+    def read(self, file, size):
         while size > 0:
             data = read_struct(file, '3f')
             self.normals.append((data[0], data[1], data[2]))
@@ -296,8 +325,10 @@ class node_vertex_normals(node):
             )
             self.size += struct.calcsize('3f')
 class node_vertex_influences(node):
-    def read(self, file, size):
+    def __init__(self):
+        super(node_vertex_influences, self).__init__()
         self.influences = []
+    def read(self, file, size):
         while size > 0:
             data = read_struct(file, 'H6B')
             self.influences.append(data[0])
@@ -310,8 +341,10 @@ class node_vertex_influences(node):
             )
             self.size += struct.calcsize('H6B')
 class node_triangles(node):
-    def read(self, file, size):
+    def __init__(self):
+        super(node_triangles, self).__init__()
         self.triangles = []
+    def read(self, file, size):
         while size > 0:
             data = read_struct(file, '3LL3ff')
             self.triangles.append({
@@ -338,12 +371,25 @@ class node_vertex_material(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
 class node_vertex_material_name(node):
+    def __init__(self):
+        super(node_vertex_material_name, self).__init__()
+        self.name = 'UNTITLED'
     def read(self, file, size):
         self.name = b2s(file.read(size))
     def pack(self):
         self.binary = s2b(self.name)
         self.size = len(self.binary)
 class node_vertex_material_info(node):
+    def __init__(self):
+        super(node_vertex_material_info, self).__init__()
+        self.Attributes = 0
+        self.Ambient = (255,255,255)
+        self.Diffuse = (255,255,255)
+        self.Specular = (0,0,0)
+        self.Emissive = (0,0,0)
+        self.Shininess = 0
+        self.Opacity = 1.0
+        self.Translucency = 0
     def read(self, file, size):
         data = read_struct(file, 'L4B4B4B4Bfff')
         self.Attributes = data[0]
@@ -388,6 +434,12 @@ class node_prelit_lightmap_multi_pass(node):
         self.children = parse_nodes(file, size)
     
 class node_material_info(node):
+    def __init__(self):
+        super(node_material_info, self).__init__()
+        self.PassCount = 0
+        self.VertexMaterialCount = 0
+        self.ShaderCount = 0
+        self.TextureCount = 0
     def read(self, file, size):
         data = read_struct(file, 'LLLL')
         self.PassCount = data[0]
@@ -407,8 +459,10 @@ class node_material_pass(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
 class node_vertex_material_ids(node):
-    def read(self, file, size):
+    def __init__(self):
+        super(node_vertex_material_ids, self).__init__()
         self.ids = []
+    def read(self, file, size):
         while size > 0:
             data = read_struct(file, 'L')
             self.ids.append(data[0])
@@ -421,8 +475,10 @@ class node_vertex_material_ids(node):
             )
             self.size += struct.calcsize('L')
 class node_shader_ids(node):
-    def read(self, file, size):
+    def __init__(self):
+        super(node_shader_ids, self).__init__()
         self.ids = []
+    def read(self, file, size):
         while size > 0:
             data = read_struct(file, 'L')
             self.ids.append(data[0])
@@ -435,8 +491,10 @@ class node_shader_ids(node):
             )
             self.size += struct.calcsize('L')
 class node_shaders(node):
-    def read(self, file, size):
+    def __init__(self):
+        super(node_shaders, self).__init__()
         self.shaders = []
+    def read(self, file, size):
         while size > 0:
             data = read_struct(file, '16B')
             self.shaders.append({
@@ -528,6 +586,12 @@ class node_texture_name(node):
         self.binary = s2b(self.name)
         self.size = len(self.binary)
 class node_hierarchy_header(node):
+    def __init__(self):
+        super(node_hierarchy_header, self).__init__()
+        self.Version = ver(4,1)
+        self.Name = 'UNTITLED'
+        self.NumPivots = 0
+        self.Center = (0, 0, 0)
     def read(self, file, size):
         data = read_struct(file, 'L16sL3f')
         self.Version = data[0]
@@ -537,14 +601,16 @@ class node_hierarchy_header(node):
     def pack(self):
         self.binary = struct.pack('L16sL3f',
             self.Version,
-            s2b(self.Name),
+            s2b(self.Name, 16),
             self.NumPivots,
             self.Center[0],self.Center[1],self.Center[2],
         )
         self.size += struct.calcsize('L16sL3f')
 class node_pivots(node):
-    def read(self, file, size):
+    def __init__(self):
+        super(node_pivots, self).__init__()
         self.pivots = []
+    def read(self, file, size):
         while size > 0:
             data = read_struct(file, '16sL3f3f4f')
             self.pivots.append({
@@ -559,11 +625,11 @@ class node_pivots(node):
         self.binary = b''
         for p in self.pivots:
             self.binary += struct.pack('16sL3f3f4f',
-                s2b(p['Name']),
+                s2b(p['Name'], 16),
                 p['ParentIdx'],
                 p['Translation'][0],p['Translation'][1],p['Translation'][2],
                 p['EulerAngles'][0],p['EulerAngles'][1],p['EulerAngles'][2],
-                p['Rotation'][0],p['Rotation'][1],p['Rotation'][2],p['Rotation'][3],
+                p['Rotation'][0],p['Rotation'][1],p['Rotation'][2],p['Rotation'][3]
             )
             self.size += struct.calcsize('16sL3f3f4f')
 class node_aggregate(node):
@@ -603,7 +669,7 @@ class node_aggregate_info(node):
         self.size = struct.calcsize('32sL')
         for s in self.Subobjects:
             self.binary += struct.pack('32s32s',
-                s2b(s['SubobjectName']), s2b(s['BoneName'])
+                s2b(s['SubobjectName'], 32), s2b(s['BoneName'], 32)
             )
             self.size += struct.calcsize('32s32s')
 class node_aggregate_class_info(node):
@@ -622,6 +688,12 @@ class node_hlod(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
 class node_hlod_header(node):
+    def __init__(self):
+        super(node_hlod_header, self).__init__()
+        self.Version = ver(1,0)
+        self.LodCount = 1
+        self.Name = 'UNTITLED'
+        self.HierarchyName = 'UNTITLED'
     def read(self, file, size):
         data = read_struct(file, 'LL16s16s')
         self.Version = data[0]
@@ -632,8 +704,8 @@ class node_hlod_header(node):
         self.binary = struct.pack('LL16s16s',
             self.Version,
             self.LodCount,
-            s2b(self.Name),
-            s2b(self.HierarchyName)
+            s2b(self.Name, 16),
+            s2b(self.HierarchyName, 16)
         )
         self.size += struct.calcsize('LL16s16s')
 class node_hlod_lod_array(node):
@@ -645,7 +717,26 @@ class node_hlod_aggregate_array(node):
 class node_hlod_proxy_array(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
+class node_hlod_sub_object_array_header(node):
+    def __init__(self):
+        super(node_hlod_sub_object_array_header, self).__init__()
+        self.ModelCount = 0
+        self.MaxScreenSize = 0.0
+    def read(self, file, size):
+        data = read_struct(file, 'Lf')
+        self.ModelCount = data[0]
+        self.MaxScreenSize = data[1]
+    def pack(self):
+        self.binary = struct.pack('Lf',
+            self.ModelCount,
+            self.MaxScreenSize
+        )
+        self.size += struct.calcsize('Lf')
 class node_hlod_sub_object(node):
+    def __init__(self):
+        super(node_hlod_sub_object, self).__init__()
+        self.BoneIndex = 0
+        self.Name = 'UNTITLED'
     def read(self, file, size):
         data = read_struct(file, 'L32s')
         self.BoneIndex = data[0]
@@ -653,7 +744,7 @@ class node_hlod_sub_object(node):
     def pack(self):
         self.binary = struct.pack('L32s',
             self.BoneIndex,
-            s2b(self.Name)
+            s2b(self.Name, 32)
         )
         self.size += struct.calcsize('L32s')
 class node_box(node):
@@ -669,7 +760,7 @@ class node_box(node):
         self.binary = struct.pack('LL32s4B3f3f',
             self.Version,
             self.Attributes,
-            s2b(self.Name),
+            s2b(self.Name, 32),
             self.Color[0], self.Color[1], self.Color[2], 0,
             self.Center[0], self.Center[1], self.Center[2],
             self.Extent[0], self.Extent[1], self.Extent[2],
@@ -756,8 +847,6 @@ def parse_nodes(file, size=0x7FFFFFFF):
             the_node = globals()['node_' + ci[0].lower()]()
             the_node.read(file, ci[1])
             nodes.append(the_node)
-            if(the_node.type() == 'hierarchy'):
-                print('<'+the_node.type() +'='+ str(ci[1]))
         except KeyError:
             file.read(ci[1])
             print('ignored: node_' + ci[0].lower())
@@ -776,3 +865,11 @@ def load(filepath):
     finally:
         file.close()
     return root
+    
+def save(root, filepath):
+    file = open(filepath, 'wb')
+    print('save: ' + filepath)
+    for c in root.children:
+        c.pack()
+        c.write(file)
+    file.close()

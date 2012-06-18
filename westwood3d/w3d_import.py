@@ -110,6 +110,7 @@ def deform_mesh(mesh, mdata, pivots):
     bm.from_mesh(mesh)
     for v in bm.verts:
         v.co = pivots[inf[v.index]]['blender_object'].matrix_world * v.co
+    bm.normal_update()
     bm.to_mesh(mesh)
 def make_shapes(root):
     shapes = []
@@ -202,6 +203,7 @@ def make_meshes(root):
                     loop[layer].uv = uvs[uvi].texcoords[v]
         
         
+        bm.normal_update()
         bm.to_mesh(me)
         
         # attach to object, place in scene
