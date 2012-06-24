@@ -45,6 +45,9 @@ def make_material(ob, mesh, uvlayers):
     
             # stages
             for s in (p.stage0, p.stage1):
+                if s == '':
+                    info.TextureCount -= 1
+                    continue
                 tex = textures.add('texture')
                 name = tex.add('texture_name')
                 name.name = s
@@ -77,7 +80,7 @@ def make_material(ob, mesh, uvlayers):
 def make_mesh(ob, root, ctrname):
     mesh = root.add('mesh')
     header = mesh.add('mesh_header3')
-    header.MeshName = ob.name.replace('.', '_')
+    header.MeshName = ob.name.split('.')[-1]
     header.ContainerName = ctrname
     
     bm = bmesh.new()
@@ -91,6 +94,7 @@ def make_mesh(ob, root, ctrname):
     header.Min = (-box[0],-box[1],-box[2])
     header.Max = (box[0],box[1],box[2])
     header.SphRadius = box.length
+    header.SphCenter = header.Max
     
     verts = mesh.add('vertices')
     norms = mesh.add('vertex_normals')
@@ -109,7 +113,7 @@ def make_mesh(ob, root, ctrname):
             verts.vertices.append((v.co[0], v.co[1], v.co[2]))
             norms.normals.append((v.normal[0], v.normal[1], v.normal[2]))
         for v in range(3):
-            shades.ids.append((vidx + v + 1))
+            shades.ids.append(vidx + v)
         vidx += 3
     
     uvlayers = {}
@@ -124,7 +128,7 @@ def make_mesh(ob, root, ctrname):
     
 def make_pivots(ob, parentid, pivots, subobj):
     id = len(pivots)
-    pivots.append((ob.name.replace('.', '_'), parentid, ob.location, ob.matrix_local.to_quaternion()))
+    pivots.append((ob.name.split('.')[-1], parentid, ob.location, ob.matrix_local.to_quaternion()))
     
     if ob.type != 'EMPTY' or len(ob.children) == 0:
         subobj.append((id, ob))
@@ -192,7 +196,7 @@ def write_some_data(context, filepath, use_some_setting):
     for id, ob in subobj:
         s = sub.add('hlod_sub_object')
         s.BoneIndex = id
-        s.Name = ctrname[:15] + '.' + ob.name.replace('.', '_')[:15]
+        s.Name = ctrname[:15] + '.' + ob.name.split('.')[-1][:15]
     
     # save
     w3d_struct.save(root, filepath)
