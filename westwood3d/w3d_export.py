@@ -3,6 +3,77 @@ import bmesh
 import mathutils
 from . import w3d_struct
 
+def make_material(ob, mesh, uvlayers):
+    info = mesh.add('material_info')
+    info.PassCount = ob.material_slots[0].material.westwood3d.mpass_count
+    info.VertexMaterialCount = len(ob.material_slots) * info.PassCount
+    info.ShaderCount = info.VertexMaterialCount
+    info.TextureCount = info.VertexMaterialCount * 2
+    
+    vertex_materials = mesh.add('vertex_materials')
+    shaders = mesh.add('shaders')
+    textures = mesh.add('textures')
+    
+    for ms in ob.material_slots:
+        for p in ms.material.westwood3d.mpass:    
+            
+            # vertex material
+            m = vertex_materials.add('vertex_material')
+            
+            name = m.add('vertex_material_name')
+            name.name = p.name
+            
+            vinfo = m.add('vertex_material_info')
+            
+            # shader
+            shaders.shaders.append({
+                'SrcBlend': 1,
+                'DestBlend': 0,
+                'DepthMask': 1,
+                'AlphaTest': 0,
+                
+                'PriGradient': 1,
+                'SecGradient': 0,
+                'DepthCompare': 3,
+                'DetailColorFunc': 0,
+                'DetailAlphaFunc': 0,
+                
+                'Texturing': 0,
+                'PostDetailColorFunc': 0,
+                'PostDetailAlphaFunc': 0
+            })
+    
+            # stages
+            for s in (p.stage0, p.stage1):
+                tex = textures.add('texture')
+                name = tex.add('texture_name')
+                name.name = s
+    
+    # passes
+    mpass = mesh.add('material_pass')
+    for p in range(info.PassCount):
+        
+        ids = mpass.add('vertex_material_ids')
+        ids.ids.append(0)
+        
+        ids = mpass.add('shader_ids')
+        ids.ids.append(0)
+        
+        stage = mpass.add('texture_stage')
+        for s in range(2):
+            name = 'pass' + str(p + 1) + '.' + str(s)
+            layer = uvlayers[name] if name in uvlayers else None
+            if layer is not None:
+                
+                ids = stage.add('texture_ids')
+                ids.ids.append(0)
+                
+                coords = stage.add('stage_texcoords')
+                for uv in layer:
+                    coords.texcoords.append(uv)
+    
+    return info.VertexMaterialCount
+    
 def make_mesh(ob, root, ctrname):
     mesh = root.add('mesh')
     header = mesh.add('mesh_header3')
@@ -14,7 +85,7 @@ def make_mesh(ob, root, ctrname):
     bm.normal_update()
     
     header.NumTris = len(bm.faces)
-    header.NumVertices = len(bm.verts)
+    header.NumVertices = len(bm.faces) * 3
     
     box = ob.bound_box.data.dimensions / 2
     header.Min = (-box[0],-box[1],-box[2])
@@ -23,53 +94,33 @@ def make_mesh(ob, root, ctrname):
     
     verts = mesh.add('vertices')
     norms = mesh.add('vertex_normals')
-    
-    for v in bm.verts:
-        verts.vertices.append((v.co[0], v.co[1], v.co[2]))
-        norms.normals.append((v.normal[0], v.normal[1], v.normal[2]))
-    
     tris = mesh.add('triangles')
+    shades = mesh.add('vertex_shade_indices')
+    
+    vidx = 0
     for f in bm.faces:
         tris.triangles.append({
-            'Vindex': (f.verts[0].index, f.verts[1].index, f.verts[2].index),
+            'Vindex': (vidx, vidx + 1, vidx + 2),
             'Attributes': 13,
             'Normal': (f.normal[0], f.normal[1], f.normal[2]),
             'Dist': 1
         })
+        for v in f.verts:
+            verts.vertices.append((v.co[0], v.co[1], v.co[2]))
+            norms.normals.append((v.normal[0], v.normal[1], v.normal[2]))
+        for v in range(3):
+            shades.ids.append((vidx + v + 1))
+        vidx += 3
     
-    info = mesh.add('material_info')
-    info.PassCount = 1
-    info.VertexMaterialCount = 1
-    info.ShaderCount = 1
+    uvlayers = {}
+    for i in bm.loops.layers.uv.items():
+        uvs = []
+        for f in bm.faces:
+            for loop in f.loops:
+                uvs.append((loop[i].uv[0], loop[i].uv[1]))
+        uvlayers[i.name] = uvs
     
-    mat = mesh.add('vertex_materials')
-    m = mat.add('vertex_material')
-    name = m.add('vertex_material_name')
-    info = m.add('vertex_material_info')
-    
-    shaders = mesh.add('shaders')
-    shaders.shaders.append({
-        'SrcBlend': 1,
-        'DestBlend': 0,
-        'DepthMask': 1,
-        'AlphaTest': 0,
-        
-        'PriGradient': 1,
-        'SecGradient': 0,
-        'DepthCompare': 3,
-        'DetailColorFunc': 0,
-        'DetailAlphaFunc': 0,
-        
-        'Texturing': 0,
-        'PostDetailColorFunc': 0,
-        'PostDetailAlphaFunc': 0
-    })
-    
-    mpass = mesh.add('material_pass')
-    ids = mpass.add('vertex_material_ids')
-    ids.ids.append(0)
-    ids = mpass.add('shader_ids')
-    ids.ids.append(0)
+    header.NumMaterials = make_material(ob, mesh, uvlayers)
     
 def make_pivots(ob, parentid, pivots, subobj):
     id = len(pivots)

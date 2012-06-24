@@ -324,6 +324,22 @@ class node_vertex_normals(node):
                 v[0], v[1], v[2]
             )
             self.size += struct.calcsize('3f')
+class node_vertex_shade_indices(node):
+    def __init__(self):
+        super(node_vertex_shade_indices, self).__init__()
+        self.ids = []
+    def read(self, file, size):
+        while size > 0:
+            data = read_struct(file, 'L')
+            self.ids.append(data[0])
+            size -= struct.calcsize('L')
+    def pack(self):
+        self.binary = b''
+        for i in self.ids:
+            self.binary += struct.pack('L',
+                i
+            )
+            self.size += struct.calcsize('L')
 class node_vertex_influences(node):
     def __init__(self):
         super(node_vertex_influences, self).__init__()
@@ -540,8 +556,10 @@ class node_texture_stage(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
 class node_texture_ids(node):
-    def read(self, file, size):
+    def __init__(self):
+        super(node_texture_ids, self).__init__()
         self.ids = []
+    def read(self, file, size):
         while size > 0:
             data = read_struct(file, 'L')
             self.ids.append(data[0])
@@ -554,8 +572,10 @@ class node_texture_ids(node):
             )
             self.size += struct.calcsize('L')
 class node_stage_texcoords(node):
-    def read(self, file, size):
+    def __init__(self):
+        super(node_stage_texcoords, self).__init__()
         self.texcoords = []
+    def read(self, file, size):
         while size > 0:
             data = read_struct(file, '2f')
             self.texcoords.append((data[0], data[1]))
@@ -580,6 +600,9 @@ class node_hierarchy(node):
     def read(self, file, size):
         self.children = parse_nodes(file, size)
 class node_texture_name(node):
+    def __init__(self):
+        super(node_texture_name, self).__init__()
+        self.name = 'UNTITLED'
     def read(self, file, size):
         self.name = b2s(file.read(size))
     def pack(self):
